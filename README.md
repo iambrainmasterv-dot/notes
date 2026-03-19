@@ -1,87 +1,53 @@
 # NoteTasks
 
-Notes and tasks app with daily schedules and presets. React + TypeScript + Vite.
+Notes and tasks app with daily schedules, templates, presets, and user accounts.  
+React + TypeScript + Vite frontend, Express + Postgres backend.
+
+## Architecture
+
+- **Frontend** (`/src`): React SPA built with Vite. Communicates with the API via `fetch`.
+- **Backend** (`/server`): Express.js API with JWT auth, bcrypt password hashing, and Postgres storage.
+- **Docker**: Single container — Express serves both the API and the built static frontend.
+
+## Local Development
+
+### Prerequisites
+- Node.js 20+
+- PostgreSQL (running locally or via Docker)
+
+### 1. Set up the database
+
+```bash
+createdb notesapp
+```
+
+### 2. Start the backend
+
+```bash
+cd server
+cp .env.example .env   # edit DATABASE_URL and JWT_SECRET
+npm install
+npm run dev             # runs on port 3001
+```
+
+### 3. Start the frontend
+
+```bash
+npm install
+npm run dev             # runs on port 5173, proxies /api to :3001
+```
+
+Open http://localhost:5173 — sign up, and you're in.
 
 ## Deploy on Railway
 
 1. Push this repo to **GitHub**.
-2. Go to [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub repo** → select this repo.
-3. In the service **Settings** → **Networking** → **Generate Domain** to get a public URL.
+2. Go to [railway.app](https://railway.app) → **New Project**.
+3. Add a **Postgres** service (Railway provides a free Postgres instance).
+4. Add a **service from GitHub** → select this repo.
+5. In the service **Variables**, set:
+   - `DATABASE_URL` → copy from the Postgres service's connection string
+   - `JWT_SECRET` → a random string (e.g. `openssl rand -hex 32`)
+6. In **Settings** → **Networking** → **Generate Domain** to get a public URL.
 
-See **[RAILWAY.md](./RAILWAY.md)** for step-by-step instructions.
-
----
-
-# React + TypeScript + Vite
-
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+The Dockerfile handles everything — it builds the frontend, bundles it with the Express server, and serves both on port 80.

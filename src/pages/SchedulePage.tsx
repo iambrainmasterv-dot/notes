@@ -1,5 +1,7 @@
 import { useState, useMemo, useRef } from 'react';
 import type { Note, Task, Item, ViewMode, SortField, SortDir, Preset, PresetItem } from '../types';
+import type { DailyTemplate } from '../hooks/useDailyTemplates';
+import type { DailyInstance } from '../hooks/useDailyInstances';
 import { NoteCard } from '../components/NoteCard';
 import { TaskCard } from '../components/TaskCard';
 import { Modal } from '../components/Modal';
@@ -11,6 +13,19 @@ import { ProgressBar } from '../components/ProgressBar';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { isExpired } from '../utils';
 import { useTick } from '../hooks/useTick';
+
+interface DailyInstancesHook {
+  instances: DailyInstance[];
+  selectedDay: string;
+  setSelectedDay: (day: string) => void;
+  addInstance: (data: Omit<DailyInstance, 'id' | 'createdAt'>) => Promise<DailyInstance>;
+  updateInstance: (id: string, patch: Partial<DailyInstance>) => void;
+  deleteInstance: (id: string) => void;
+  deletePresetInstances: (day: string) => Promise<void>;
+  deleteManualInstances: (day: string) => Promise<void>;
+  spawnFromTemplates: (day: string) => Promise<void>;
+  loadDay: (day: string) => Promise<void>;
+}
 
 interface Props {
   notes: Note[];
@@ -29,6 +44,11 @@ interface Props {
   addPreset: (name: string, items: PresetItem[]) => Preset;
   updatePreset: (id: string, patch: Partial<Omit<Preset, 'id'>>) => void;
   deletePreset: (id: string) => void;
+  templates: DailyTemplate[];
+  addTemplate: (data: Omit<DailyTemplate, 'id' | 'createdAt'>) => Promise<DailyTemplate>;
+  updateTemplate: (id: string, patch: Partial<Omit<DailyTemplate, 'id' | 'createdAt'>>) => void;
+  deleteTemplate: (id: string) => void;
+  dailyInstances: DailyInstancesHook;
 }
 
 export function SchedulePage({
@@ -36,13 +56,23 @@ export function SchedulePage({
   deleteNote, deleteTask, completeNote, completeTask,
   setNotes, setTasks,
   presets, addPreset, updatePreset, deletePreset,
+  templates, addTemplate, updateTemplate: _updateTemplate, deleteTemplate,
+  dailyInstances,
 }: Props) {
+  void _updateTemplate;
+  const {
+    instances, selectedDay, setSelectedDay: _setDay,
+    addInstance, updateInstance, deleteInstance,
+    deletePresetInstances, loadDay: _loadDay,
+  } = dailyInstances;
+  void _setDay; void _loadDay;
+
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState<SortField>('createdAt');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
-  // Create modals
+  // Daily Note/Task creation for old-style daily items
   const [noteModalOpen, setNoteModalOpen] = useState(false);
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [nTitle, setNTitle] = useState('');
@@ -53,6 +83,15 @@ export function SchedulePage({
   const [tTarget, setTTarget] = useState(10);
   const [tDeadline, setTDeadline] = useState<string | undefined>();
 
+  // Template modals
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [tmplType, setTmplType] = useState<'note' | 'task'>('task');
+  const [tmplTitle, setTmplTitle] = useState('');
+  const [tmplDesc, setTmplDesc] = useState('');
+  const [tmplTarget, setTmplTarget] = useState(10);
+  const [tmplDeadline, setTmplDeadline] = useState<string | undefined>();
+  const [confirmDeleteTemplate, setConfirmDeleteTemplate] = useState<string | null>(null);
+
   // Preset modals
   const [savePresetOpen, setSavePresetOpen] = useState(false);
   const [presetName, setPresetName] = useState('');
@@ -61,13 +100,12 @@ export function SchedulePage({
   const [pendingApplyId, setPendingApplyId] = useState<string | null>(null);
   const [expandedPreset, setExpandedPreset] = useState<string | null>(null);
 
-  // Edit preset
   const [editPresetId, setEditPresetId] = useState<string | null>(null);
   const [editPresetName, setEditPresetName] = useState('');
 
-  // Table delete
   const [tableDeleteId, setTableDeleteId] = useState<{ id: string; type: 'note' | 'task' } | null>(null);
 
+  // Old-style daily items (the `daily` flag on notes/tasks)
   const dailyNotes = useMemo(() => notes.filter((n) => n.daily), [notes]);
   const dailyTasks = useMemo(() => tasks.filter((t) => t.daily), [tasks]);
   const allDailyItems: Item[] = useMemo(
@@ -113,6 +151,7 @@ export function SchedulePage({
 
   const resetNoteForm = () => { setNTitle(''); setNDesc(''); setNDeadline(undefined); };
   const resetTaskForm = () => { setTTitle(''); setTDesc(''); setTTarget(10); setTDeadline(undefined); };
+  const resetTemplateForm = () => { setTmplTitle(''); setTmplDesc(''); setTmplTarget(10); setTmplDeadline(undefined); setTmplType('task'); };
 
   const handleAddNote = () => {
     if (!nTitle.trim()) return;
@@ -128,7 +167,25 @@ export function SchedulePage({
     setTaskModalOpen(false);
   };
 
+  const handleAddTemplate = async () => {
+    if (!tmplTitle.trim()) return;
+    await addTemplate({
+      type: tmplType,
+      title: tmplTitle.trim(),
+      description: tmplDesc.trim(),
+      deadlineTime: tmplDeadline ?? null,
+      target: tmplType === 'task' ? tmplTarget : 0,
+    });
+    resetTemplateForm();
+    setTemplateModalOpen(false);
+  };
+
   // Preset logic
+  const manualInstances = useMemo(
+    () => instances.filter((i) => i.sourceTemplateId === null && i.presetId === null),
+    [instances],
+  );
+
   const currentDailyAsPresetItems = (): PresetItem[] => {
     return allDailyItems.map((item) => {
       const base: PresetItem = { type: item.type, title: item.title, description: item.description, deadline: item.deadline };
@@ -153,13 +210,16 @@ export function SchedulePage({
     setSavePresetOpen(false);
   };
 
-  const executeApplyPreset = (presetId: string) => {
+  const executeApplyPreset = async (presetId: string) => {
     const preset = presets.find((p) => p.id === presetId);
     if (!preset) return;
 
-    // Remove all current daily items
+    // Remove only non-template daily items (preset-based or manual)
     setNotes((prev) => prev.filter((n) => !n.daily));
     setTasks((prev) => prev.filter((t) => !t.daily));
+
+    // Delete preset instances for the day, template instances remain
+    await deletePresetInstances(selectedDay);
 
     // Create new daily items from preset
     for (const item of preset.items) {
@@ -168,6 +228,22 @@ export function SchedulePage({
       } else {
         addTask({ title: item.title, description: item.description, target: item.target ?? 10, deadline: item.deadline, daily: true });
       }
+    }
+
+    // Also insert as daily instances with preset_id
+    for (const item of preset.items) {
+      await addInstance({
+        dayDate: selectedDay,
+        sourceTemplateId: null,
+        presetId: presetId,
+        type: item.type,
+        title: item.title,
+        description: item.description,
+        deadlineTime: item.deadline ?? null,
+        target: item.target ?? 0,
+        progress: 0,
+        completed: false,
+      });
     }
 
     setPendingApplyId(null);
@@ -262,11 +338,15 @@ export function SchedulePage({
   const tableDeleteItem = tableDeleteId ? filtered.find((i) => i.id === tableDeleteId.id) : null;
   const activeNotes = useMemo(() => notes.filter((n) => !n.completed && n.daily), [notes]);
 
+  // Instance categorization
+  const templateInstances = useMemo(() => instances.filter((i) => i.sourceTemplateId !== null), [instances]);
+  const presetInstances = useMemo(() => instances.filter((i) => i.presetId !== null), [instances]);
+
   return (
     <div className="page">
       <header className="page-header">
         <h1 className="page-title">Schedule</h1>
-        <div className="toolbar-actions">
+        <div className="toolbar-actions" style={{ gap: 8, flexWrap: 'wrap' }}>
           <button className="btn btn-primary" onClick={() => setNoteModalOpen(true)}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Daily Note
@@ -365,6 +445,84 @@ export function SchedulePage({
         </div>
       )}
 
+      {/* Daily Templates section */}
+      <div className="schedule-presets" style={{ marginTop: 32 }}>
+        <div className="presets-header">
+          <h2 className="presets-title">Daily Templates</h2>
+          <button className="btn btn-sm btn-primary" onClick={() => setTemplateModalOpen(true)}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            New Template
+          </button>
+        </div>
+        <p className="text-muted" style={{ fontSize: '0.82rem', margin: '4px 0 12px' }}>
+          Templates automatically spawn as daily instances at the reset time each day. They are not removed when applying a preset.
+        </p>
+
+        {templates.length === 0 && <p className="empty-state" style={{ padding: '12px 0' }}>No templates yet.</p>}
+
+        <div className="presets-list">
+          {templates.map((t) => (
+            <div key={t.id} className="preset-card">
+              <div className="preset-card-header">
+                <div className="preset-card-info">
+                  <span className={`type-tag type-${t.type}`}>{t.type}</span>
+                  <span className="preset-card-name">{t.title}</span>
+                  {t.type === 'task' && t.target > 0 && <span className="text-muted">target: {t.target}</span>}
+                  {t.deadlineTime && <span className="text-muted">{t.deadlineTime}</span>}
+                </div>
+                <div className="preset-card-actions">
+                  <button className="btn btn-sm btn-ghost btn-delete" onClick={() => setConfirmDeleteTemplate(t.id)}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Instances for selected day */}
+        {instances.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <h3 className="presets-title" style={{ fontSize: '0.95rem' }}>
+              Instances for {selectedDay}
+              <span className="text-muted" style={{ fontSize: '0.8rem', marginLeft: 8 }}>
+                ({templateInstances.length} from templates, {presetInstances.length} from presets, {manualInstances.length} manual)
+              </span>
+            </h3>
+            <div className="presets-list" style={{ marginTop: 8 }}>
+              {instances.map((inst) => (
+                <div key={inst.id} className="preset-card" style={{ opacity: inst.completed ? 0.6 : 1 }}>
+                  <div className="preset-card-header">
+                    <div className="preset-card-info" style={{ gap: 6 }}>
+                      <span className={`type-tag type-${inst.type}`}>{inst.type}</span>
+                      <span className="preset-card-name">{inst.title}</span>
+                      {inst.type === 'task' && (
+                        <span className="text-muted">{inst.progress}/{inst.target}</span>
+                      )}
+                      {inst.sourceTemplateId && <span className="badge badge-daily">template</span>}
+                      {inst.presetId && <span className="badge badge-daily" style={{ background: 'var(--primary)', color: '#fff' }}>preset</span>}
+                      {inst.completed && <span className="text-ok">Done</span>}
+                    </div>
+                    <div className="preset-card-actions" style={{ gap: 4 }}>
+                      {!inst.completed && (
+                        <button className="btn btn-sm btn-ghost btn-complete" onClick={() => updateInstance(inst.id, { completed: true })}>✓</button>
+                      )}
+                      {inst.completed && (
+                        <button className="btn btn-sm btn-ghost" onClick={() => updateInstance(inst.id, { completed: false })}>↩</button>
+                      )}
+                      {inst.type === 'task' && !inst.completed && (
+                        <button className="btn btn-sm btn-ghost" onClick={() => updateInstance(inst.id, { progress: Math.min(inst.progress + 1, inst.target) })}>+1</button>
+                      )}
+                      <button className="btn btn-sm btn-ghost btn-delete" onClick={() => deleteInstance(inst.id)}>✕</button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Presets section */}
       <div className="schedule-presets">
         <div className="presets-header">
@@ -442,6 +600,32 @@ export function SchedulePage({
         <button className="btn btn-primary btn-full" onClick={handleAddTask}>Create Daily Task</button>
       </Modal>
 
+      <Modal open={templateModalOpen} onClose={() => { setTemplateModalOpen(false); resetTemplateForm(); }} title="New Daily Template">
+        <div className="form-group">
+          <label>Type</label>
+          <div className="theme-modes" style={{ marginBottom: 8 }}>
+            <button className={`theme-mode-btn ${tmplType === 'note' ? 'active' : ''}`} onClick={() => setTmplType('note')}>Note</button>
+            <button className={`theme-mode-btn ${tmplType === 'task' ? 'active' : ''}`} onClick={() => setTmplType('task')}>Task</button>
+          </div>
+        </div>
+        <div className="form-group">
+          <label>Title</label>
+          <input className="input" value={tmplTitle} onChange={(e) => setTmplTitle(e.target.value)} autoFocus placeholder="Template title..." />
+        </div>
+        <div className="form-group">
+          <label>Description</label>
+          <textarea className="input textarea" value={tmplDesc} onChange={(e) => setTmplDesc(e.target.value)} rows={3} placeholder="Optional..." />
+        </div>
+        {tmplType === 'task' && (
+          <div className="form-group">
+            <label>Target amount</label>
+            <input className="input" type="number" min={1} value={tmplTarget} onChange={(e) => setTmplTarget(Number(e.target.value))} />
+          </div>
+        )}
+        <DeadlinePicker value={tmplDeadline} onChange={setTmplDeadline} timeOnly />
+        <button className="btn btn-primary btn-full" onClick={handleAddTemplate}>Create Template</button>
+      </Modal>
+
       <Modal open={savePresetOpen} onClose={() => setSavePresetOpen(false)} title="Save Preset">
         <div className="form-group">
           <label>Preset Name</label>
@@ -484,6 +668,14 @@ export function SchedulePage({
         message={`Delete preset "${presets.find((p) => p.id === confirmDeletePreset)?.name}"? This cannot be undone.`}
         onConfirm={() => { if (confirmDeletePreset) deletePreset(confirmDeletePreset); setConfirmDeletePreset(null); }}
         onCancel={() => setConfirmDeletePreset(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmDeleteTemplate !== null}
+        title="Delete Template"
+        message={`Delete template "${templates.find((t) => t.id === confirmDeleteTemplate)?.title}"? Existing instances won't be affected.`}
+        onConfirm={() => { if (confirmDeleteTemplate) deleteTemplate(confirmDeleteTemplate); setConfirmDeleteTemplate(null); }}
+        onCancel={() => setConfirmDeleteTemplate(null)}
       />
 
       <ConfirmDialog

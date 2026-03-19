@@ -1,16 +1,23 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import type { Page } from './types';
+import { useAuth } from './auth/AuthProvider';
+import { LoginPage } from './pages/LoginPage';
 import { useNotes } from './hooks/useNotes';
 import { useTasks } from './hooks/useTasks';
-import { useTheme } from './hooks/useTheme';
+import { useUserSettings } from './hooks/useUserSettings';
+import { useThemeApply } from './hooks/useTheme';
 import { usePresets } from './hooks/usePresets';
 import { useDailyReset } from './hooks/useDailyReset';
+import { useDailyTemplates } from './hooks/useDailyTemplates';
+import { useDailyInstances } from './hooks/useDailyInstances';
+import { useLocalImport } from './hooks/useLocalImport';
 import { NotesPage } from './pages/NotesPage';
 import { TasksPage } from './pages/TasksPage';
 import { PoolPage } from './pages/PoolPage';
 import { SchedulePage } from './pages/SchedulePage';
 import { CompletedPage } from './pages/CompletedPage';
 import { ThemePanel } from './components/ThemePanel';
+import { Modal } from './components/Modal';
 
 const tabs: { key: Page; label: string; icon: React.ReactNode }[] = [
   {
@@ -36,14 +43,51 @@ const tabs: { key: Page; label: string; icon: React.ReactNode }[] = [
 ];
 
 export default function App() {
+  const { user, loading, signOut } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="login-page">
+        <div className="login-card" style={{ textAlign: 'center' }}>
+          <div className="brand-mark">N</div>
+          <p style={{ marginTop: 12, color: 'var(--text-secondary)' }}>Loading…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) return <LoginPage />;
+
+  return <AuthenticatedApp signOut={signOut} />;
+}
+
+function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
+  const { user } = useAuth();
   const [page, setPage] = useState<Page>('pool');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { notes, addNote, updateNote, deleteNote, completeNote, recoverNote, setNotes } = useNotes();
   const { tasks, addTask, updateTask, deleteTask, completeTask, recoverTask, setTasks } = useTasks();
-  const { settings, update: updateTheme } = useTheme();
+  const { settings, update: updateTheme, lastResetTag, saveResetTag } = useUserSettings();
+  useThemeApply(settings);
   const { presets, addPreset, updatePreset, deletePreset } = usePresets();
 
-  useDailyReset({ dailyResetTime: settings.dailyResetTime, setNotes, setTasks });
+  useDailyReset({ dailyResetTime: settings.dailyResetTime, setNotes, setTasks, lastResetTag, saveResetTag });
+
+  const { templates, addTemplate, updateTemplate, deleteTemplate } = useDailyTemplates();
+  const dailyInstancesHook = useDailyInstances(templates, settings.dailyResetTime, lastResetTag);
+
+  const { hasLocalData, importLocalData } = useLocalImport();
+  const [showImport, setShowImport] = useState(false);
+
+  useEffect(() => {
+    if (hasLocalData()) setShowImport(true);
+  }, [hasLocalData]);
+
+  const handleImport = async () => {
+    await importLocalData();
+    setShowImport(false);
+    window.location.reload();
+  };
 
   const completedCount = useMemo(
     () => notes.filter((n) => n.completed).length + tasks.filter((t) => t.completed).length,
@@ -96,6 +140,11 @@ export default function App() {
             <span className="nav-label">Settings</span>
           </button>
           {settingsOpen && <ThemePanel settings={settings} onUpdate={updateTheme} />}
+
+          <div className="sidebar-user">
+            <span className="user-email" title={user?.email ?? ''}>{user?.email ?? ''}</span>
+            <button className="btn btn-sm btn-ghost" onClick={signOut}>Sign Out</button>
+          </div>
         </div>
       </nav>
 
@@ -116,6 +165,9 @@ export default function App() {
             setNotes={setNotes} setTasks={setTasks}
             presets={presets} addPreset={addPreset}
             updatePreset={updatePreset} deletePreset={deletePreset}
+            templates={templates} addTemplate={addTemplate}
+            updateTemplate={updateTemplate} deleteTemplate={deleteTemplate}
+            dailyInstances={dailyInstancesHook}
           />
         )}
         {page === 'notes' && (
@@ -129,6 +181,16 @@ export default function App() {
             deleteNote={deleteNote} deleteTask={deleteTask} setNotes={setNotes} setTasks={setTasks} />
         )}
       </main>
+
+      <Modal open={showImport} onClose={() => setShowImport(false)} title="Import Local Data">
+        <p className="card-desc">
+          We found notes and tasks saved locally on this device. Would you like to import them into your account?
+        </p>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+          <button className="btn" onClick={() => setShowImport(false)}>Skip</button>
+          <button className="btn btn-primary" onClick={handleImport}>Import</button>
+        </div>
+      </Modal>
     </div>
   );
 }

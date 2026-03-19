@@ -1,7 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect, useCallback } from 'react';
 import type { ThemeMode, AccentColor, UIScale, FontScale, ThemeSettings } from '../types';
-
-const THEME_KEY = 'notesapp_theme';
 
 interface AccentPalette {
   primary: string;
@@ -30,31 +28,16 @@ const ACCENT_PALETTES: Record<AccentColor, AccentPalette> = {
 const UI_SCALE_MAP: Record<UIScale, string> = { compact: '0.88', default: '1', comfortable: '1.12' };
 const FONT_SCALE_MAP: Record<FontScale, string> = { small: '13px', default: '14px', large: '16px' };
 
-function loadTheme(): ThemeSettings {
-  try {
-    const raw = localStorage.getItem(THEME_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<ThemeSettings>;
-      return {
-        mode: parsed.mode ?? 'system',
-        accent: parsed.accent ?? 'blue',
-        uiScale: parsed.uiScale ?? 'default',
-        fontScale: parsed.fontScale ?? 'default',
-        dailyResetTime: parsed.dailyResetTime ?? '00:00',
-      };
-    }
-  } catch { /* ignore */ }
-  return { mode: 'system', accent: 'blue', uiScale: 'default', fontScale: 'default', dailyResetTime: '00:00' };
-}
-
 function resolveMode(mode: ThemeMode): 'light' | 'dark' {
   if (mode !== 'system') return mode;
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
-export function useTheme() {
-  const [settings, setSettings] = useState<ThemeSettings>(loadTheme);
-
+/**
+ * Pure visual applicator — applies CSS variables from settings.
+ * Does NOT own persistence; that's handled by useUserSettings.
+ */
+export function useThemeApply(settings: ThemeSettings) {
   const applyTheme = useCallback((s: ThemeSettings) => {
     const resolved = resolveMode(s.mode);
     const root = document.documentElement;
@@ -71,7 +54,6 @@ export function useTheme() {
 
   useEffect(() => {
     applyTheme(settings);
-    localStorage.setItem(THEME_KEY, JSON.stringify(settings));
   }, [settings, applyTheme]);
 
   useEffect(() => {
@@ -81,10 +63,4 @@ export function useTheme() {
     mq.addEventListener('change', handler);
     return () => mq.removeEventListener('change', handler);
   }, [settings, applyTheme]);
-
-  const update = useCallback((patch: Partial<ThemeSettings>) => {
-    setSettings((prev) => ({ ...prev, ...patch }));
-  }, []);
-
-  return { settings, update };
 }
