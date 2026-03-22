@@ -12,6 +12,7 @@ import settingsRoutes from './routes/settings.js';
 import templatesRoutes from './routes/templates.js';
 import instancesRoutes from './routes/instances.js';
 import presetsRoutes from './routes/presets.js';
+import scheduleTemplatesRoutes from './routes/scheduleTemplates.js';
 import importRoutes from './routes/import.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -29,6 +30,7 @@ app.use('/api/settings', authMiddleware, settingsRoutes);
 app.use('/api/templates', authMiddleware, templatesRoutes);
 app.use('/api/instances', authMiddleware, instancesRoutes);
 app.use('/api/presets', authMiddleware, presetsRoutes);
+app.use('/api/schedule-templates', authMiddleware, scheduleTemplatesRoutes);
 app.use('/api/import', authMiddleware, importRoutes);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));

@@ -76,3 +76,26 @@ export interface Preset {
   name: string;
   items: PresetItem[];
 }
+
+export type Weekday = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
+export type ScheduleKind = 'weekday' | 'date' | 'none';
+
+export interface ScheduleTemplateItem {
+  id: string;
+  type: 'note' | 'task';
+  title: string;
+  description: string;
+  deadlineTime?: string | null;
+  target?: number | null;
+  sortOrder: number;
+}
+
+export interface ScheduleTemplate {
+  id: string;
+  name: string;
+  description: string;
+  scheduleKind: ScheduleKind;
+  scheduleValue: string | null;
+  items: ScheduleTemplateItem[];
+  createdAt: string;
+}

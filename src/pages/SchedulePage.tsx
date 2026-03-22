@@ -1,7 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
-import type { Note, Task, Item, ViewMode, SortField, SortDir, Preset, PresetItem } from '../types';
-import type { DailyTemplate } from '../hooks/useDailyTemplates';
-import type { DailyInstance } from '../hooks/useDailyInstances';
+import type { Note, Task, Item, ViewMode, SortField, SortDir, Preset, PresetItem, ScheduleTemplate, ScheduleKind, Weekday } from '../types';
+import type { NewScheduleTemplateData } from '../hooks/useScheduleTemplates';
 import { NoteCard } from '../components/NoteCard';
 import { TaskCard } from '../components/TaskCard';
 import { Modal } from '../components/Modal';
@@ -14,17 +13,27 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { isExpired } from '../utils';
 import { useTick } from '../hooks/useTick';
 
-interface DailyInstancesHook {
-  instances: DailyInstance[];
-  selectedDay: string;
-  setSelectedDay: (day: string) => void;
-  addInstance: (data: Omit<DailyInstance, 'id' | 'createdAt'>) => Promise<DailyInstance>;
-  updateInstance: (id: string, patch: Partial<DailyInstance>) => void;
-  deleteInstance: (id: string) => void;
-  deletePresetInstances: (day: string) => Promise<void>;
-  deleteManualInstances: (day: string) => Promise<void>;
-  spawnFromTemplates: (day: string) => Promise<void>;
-  loadDay: (day: string) => Promise<void>;
+const WEEKDAY_LABELS: { value: Weekday; label: string }[] = [
+  { value: 'monday', label: 'Monday' },
+  { value: 'tuesday', label: 'Tuesday' },
+  { value: 'wednesday', label: 'Wednesday' },
+  { value: 'thursday', label: 'Thursday' },
+  { value: 'friday', label: 'Friday' },
+  { value: 'saturday', label: 'Saturday' },
+  { value: 'sunday', label: 'Sunday' },
+];
+
+interface DraftItem {
+  key: string;
+  type: 'note' | 'task';
+  title: string;
+  description: string;
+  deadlineTime: string;
+  target: number;
+}
+
+function emptyDraft(): DraftItem {
+  return { key: crypto.randomUUID(), type: 'task', title: '', description: '', deadlineTime: '', target: 10 };
 }
 
 interface Props {
@@ -44,11 +53,9 @@ interface Props {
   addPreset: (name: string, items: PresetItem[]) => Preset;
   updatePreset: (id: string, patch: Partial<Omit<Preset, 'id'>>) => void;
   deletePreset: (id: string) => void;
-  templates: DailyTemplate[];
-  addTemplate: (data: Omit<DailyTemplate, 'id' | 'createdAt'>) => Promise<DailyTemplate>;
-  updateTemplate: (id: string, patch: Partial<Omit<DailyTemplate, 'id' | 'createdAt'>>) => void;
-  deleteTemplate: (id: string) => void;
-  dailyInstances: DailyInstancesHook;
+  scheduleTemplates: ScheduleTemplate[];
+  addScheduleTemplate: (data: NewScheduleTemplateData) => Promise<ScheduleTemplate>;
+  deleteScheduleTemplate: (id: string) => Promise<void>;
 }
 
 export function SchedulePage({
@@ -56,23 +63,14 @@ export function SchedulePage({
   deleteNote, deleteTask, completeNote, completeTask,
   setNotes, setTasks,
   presets, addPreset, updatePreset, deletePreset,
-  templates, addTemplate, updateTemplate: _updateTemplate, deleteTemplate,
-  dailyInstances,
+  scheduleTemplates, addScheduleTemplate, deleteScheduleTemplate,
 }: Props) {
-  void _updateTemplate;
-  const {
-    instances, selectedDay, setSelectedDay: _setDay,
-    addInstance, updateInstance, deleteInstance,
-    deletePresetInstances, loadDay: _loadDay,
-  } = dailyInstances;
-  void _setDay; void _loadDay;
-
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState<SortField>('createdAt');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
-  // Daily Note/Task creation for old-style daily items
+  // Daily Note/Task creation modals
   const [noteModalOpen, setNoteModalOpen] = useState(false);
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [nTitle, setNTitle] = useState('');
@@ -83,14 +81,20 @@ export function SchedulePage({
   const [tTarget, setTTarget] = useState(10);
   const [tDeadline, setTDeadline] = useState<string | undefined>();
 
-  // Template modals
-  const [templateModalOpen, setTemplateModalOpen] = useState(false);
-  const [tmplType, setTmplType] = useState<'note' | 'task'>('task');
-  const [tmplTitle, setTmplTitle] = useState('');
-  const [tmplDesc, setTmplDesc] = useState('');
-  const [tmplTarget, setTmplTarget] = useState(10);
-  const [tmplDeadline, setTmplDeadline] = useState<string | undefined>();
-  const [confirmDeleteTemplate, setConfirmDeleteTemplate] = useState<string | null>(null);
+  // Schedule template builder (big modal)
+  const [builderOpen, setBuilderOpen] = useState(false);
+  const [draftItems, setDraftItems] = useState<DraftItem[]>([emptyDraft()]);
+
+  // Schedule template confirm (small modal)
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [tplName, setTplName] = useState('');
+  const [tplDesc, setTplDesc] = useState('');
+  const [dayMode, setDayMode] = useState<'none' | 'weekday' | 'date'>('none');
+  const [selectedWeekday, setSelectedWeekday] = useState<Weekday>('monday');
+  const [selectedDate, setSelectedDate] = useState('');
+
+  const [confirmDeleteTpl, setConfirmDeleteTpl] = useState<string | null>(null);
+  const [expandedTpl, setExpandedTpl] = useState<string | null>(null);
 
   // Preset modals
   const [savePresetOpen, setSavePresetOpen] = useState(false);
@@ -99,7 +103,6 @@ export function SchedulePage({
   const [warnUnsaved, setWarnUnsaved] = useState(false);
   const [pendingApplyId, setPendingApplyId] = useState<string | null>(null);
   const [expandedPreset, setExpandedPreset] = useState<string | null>(null);
-
   const [editPresetId, setEditPresetId] = useState<string | null>(null);
   const [editPresetName, setEditPresetName] = useState('');
 
@@ -151,7 +154,6 @@ export function SchedulePage({
 
   const resetNoteForm = () => { setNTitle(''); setNDesc(''); setNDeadline(undefined); };
   const resetTaskForm = () => { setTTitle(''); setTDesc(''); setTTarget(10); setTDeadline(undefined); };
-  const resetTemplateForm = () => { setTmplTitle(''); setTmplDesc(''); setTmplTarget(10); setTmplDeadline(undefined); setTmplType('task'); };
 
   const handleAddNote = () => {
     if (!nTitle.trim()) return;
@@ -167,25 +169,59 @@ export function SchedulePage({
     setTaskModalOpen(false);
   };
 
-  const handleAddTemplate = async () => {
-    if (!tmplTitle.trim()) return;
-    await addTemplate({
-      type: tmplType,
-      title: tmplTitle.trim(),
-      description: tmplDesc.trim(),
-      deadlineTime: tmplDeadline ?? null,
-      target: tmplType === 'task' ? tmplTarget : 0,
-    });
-    resetTemplateForm();
-    setTemplateModalOpen(false);
+  // ---- Schedule Template builder ----
+  const addDraftRow = () => setDraftItems((prev) => [...prev, emptyDraft()]);
+  const removeDraftRow = (key: string) => setDraftItems((prev) => prev.filter((d) => d.key !== key));
+  const updateDraftRow = (key: string, patch: Partial<DraftItem>) =>
+    setDraftItems((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
+
+  const handleBuilderSubmit = () => {
+    const validItems = draftItems.filter((d) => d.title.trim());
+    if (validItems.length === 0) return;
+    setConfirmOpen(true);
   };
 
-  // Preset logic
-  const manualInstances = useMemo(
-    () => instances.filter((i) => i.sourceTemplateId === null && i.presetId === null),
-    [instances],
-  );
+  const handleTemplateConfirm = async () => {
+    const validItems = draftItems.filter((d) => d.title.trim());
+    if (validItems.length === 0) return;
+    if (!tplName.trim()) return;
 
+    let scheduleKind: ScheduleKind = 'none';
+    let scheduleValue: string | null = null;
+    if (dayMode === 'weekday') {
+      scheduleKind = 'weekday';
+      scheduleValue = selectedWeekday;
+    } else if (dayMode === 'date' && selectedDate) {
+      scheduleKind = 'date';
+      const parts = selectedDate.split('-');
+      scheduleValue = `${parts[1]}-${parts[2]}`;
+    }
+
+    await addScheduleTemplate({
+      name: tplName.trim(),
+      description: tplDesc.trim(),
+      scheduleKind,
+      scheduleValue,
+      items: validItems.map((d) => ({
+        type: d.type,
+        title: d.title.trim(),
+        description: d.description.trim(),
+        deadlineTime: d.deadlineTime || null,
+        target: d.type === 'task' ? d.target : null,
+      })),
+    });
+
+    setConfirmOpen(false);
+    setBuilderOpen(false);
+    setDraftItems([emptyDraft()]);
+    setTplName('');
+    setTplDesc('');
+    setDayMode('none');
+    setSelectedWeekday('monday');
+    setSelectedDate('');
+  };
+
+  // ---- Preset logic ----
   const currentDailyAsPresetItems = (): PresetItem[] => {
     return allDailyItems.map((item) => {
       const base: PresetItem = { type: item.type, title: item.title, description: item.description, deadline: item.deadline };
@@ -214,14 +250,9 @@ export function SchedulePage({
     const preset = presets.find((p) => p.id === presetId);
     if (!preset) return;
 
-    // Remove only non-template daily items (preset-based or manual)
     setNotes((prev) => prev.filter((n) => !n.daily));
     setTasks((prev) => prev.filter((t) => !t.daily));
 
-    // Delete preset instances for the day, template instances remain
-    await deletePresetInstances(selectedDay);
-
-    // Create new daily items from preset
     for (const item of preset.items) {
       if (item.type === 'note') {
         addNote({ title: item.title, description: item.description, deadline: item.deadline, daily: true });
@@ -229,23 +260,6 @@ export function SchedulePage({
         addTask({ title: item.title, description: item.description, target: item.target ?? 10, deadline: item.deadline, daily: true });
       }
     }
-
-    // Also insert as daily instances with preset_id
-    for (const item of preset.items) {
-      await addInstance({
-        dayDate: selectedDay,
-        sourceTemplateId: null,
-        presetId: presetId,
-        type: item.type,
-        title: item.title,
-        description: item.description,
-        deadlineTime: item.deadline ?? null,
-        target: item.target ?? 0,
-        progress: 0,
-        completed: false,
-      });
-    }
-
     setPendingApplyId(null);
   };
 
@@ -258,20 +272,9 @@ export function SchedulePage({
     }
   };
 
-  const handleWarnSave = () => {
-    setSavePresetOpen(true);
-    setWarnUnsaved(false);
-  };
-
-  const handleWarnSkip = () => {
-    setWarnUnsaved(false);
-    if (pendingApplyId) executeApplyPreset(pendingApplyId);
-  };
-
-  const handleWarnCancel = () => {
-    setWarnUnsaved(false);
-    setPendingApplyId(null);
-  };
+  const handleWarnSave = () => { setSavePresetOpen(true); setWarnUnsaved(false); };
+  const handleWarnSkip = () => { setWarnUnsaved(false); if (pendingApplyId) executeApplyPreset(pendingApplyId); };
+  const handleWarnCancel = () => { setWarnUnsaved(false); setPendingApplyId(null); };
 
   const handleEditPresetSave = () => {
     if (editPresetId && editPresetName.trim()) {
@@ -338,15 +341,28 @@ export function SchedulePage({
   const tableDeleteItem = tableDeleteId ? filtered.find((i) => i.id === tableDeleteId.id) : null;
   const activeNotes = useMemo(() => notes.filter((n) => !n.completed && n.daily), [notes]);
 
-  // Instance categorization
-  const templateInstances = useMemo(() => instances.filter((i) => i.sourceTemplateId !== null), [instances]);
-  const presetInstances = useMemo(() => instances.filter((i) => i.presetId !== null), [instances]);
+  // Schedule template helpers
+  const scheduleLabel = (tpl: ScheduleTemplate) => {
+    if (tpl.scheduleKind === 'weekday') {
+      return `Every ${(tpl.scheduleValue ?? '').charAt(0).toUpperCase()}${(tpl.scheduleValue ?? '').slice(1)}`;
+    }
+    if (tpl.scheduleKind === 'date') {
+      const [mm, dd] = (tpl.scheduleValue ?? '').split('-');
+      const months = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return `Every ${months[parseInt(mm)]} ${parseInt(dd)}`;
+    }
+    return 'No schedule';
+  };
 
   return (
     <div className="page">
       <header className="page-header">
         <h1 className="page-title">Schedule</h1>
         <div className="toolbar-actions" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" onClick={() => { setDraftItems([emptyDraft()]); setBuilderOpen(true); }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            Templates
+          </button>
           <button className="btn btn-primary" onClick={() => setNoteModalOpen(true)}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Daily Note
@@ -375,7 +391,7 @@ export function SchedulePage({
 
       {viewMode === 'list' && (
         <div className="card-grid">
-          {filtered.length === 0 && <p className="empty-state">No daily items yet. Create one or apply a preset!</p>}
+          {filtered.length === 0 && <p className="empty-state">No daily items yet. Create one, apply a preset, or set up a template!</p>}
           {filtered.map((item) => {
             if (item.type === 'note') {
               return (
@@ -445,82 +461,54 @@ export function SchedulePage({
         </div>
       )}
 
-      {/* Daily Templates section */}
+      {/* Schedule Templates section */}
       <div className="schedule-presets" style={{ marginTop: 32 }}>
         <div className="presets-header">
-          <h2 className="presets-title">Daily Templates</h2>
-          <button className="btn btn-sm btn-primary" onClick={() => setTemplateModalOpen(true)}>
+          <h2 className="presets-title">Schedule Templates</h2>
+          <button className="btn btn-sm btn-primary" onClick={() => { setDraftItems([emptyDraft()]); setBuilderOpen(true); }}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             New Template
           </button>
         </div>
         <p className="text-muted" style={{ fontSize: '0.82rem', margin: '4px 0 12px' }}>
-          Templates automatically spawn as daily instances at the reset time each day. They are not removed when applying a preset.
+          Templates with a schedule (weekday or date) automatically add items on matching days and remove them when the day ends.
         </p>
 
-        {templates.length === 0 && <p className="empty-state" style={{ padding: '12px 0' }}>No templates yet.</p>}
+        {scheduleTemplates.length === 0 && <p className="empty-state" style={{ padding: '12px 0' }}>No schedule templates yet.</p>}
 
         <div className="presets-list">
-          {templates.map((t) => (
-            <div key={t.id} className="preset-card">
-              <div className="preset-card-header">
-                <div className="preset-card-info">
-                  <span className={`type-tag type-${t.type}`}>{t.type}</span>
-                  <span className="preset-card-name">{t.title}</span>
-                  {t.type === 'task' && t.target > 0 && <span className="text-muted">target: {t.target}</span>}
-                  {t.deadlineTime && <span className="text-muted">{t.deadlineTime}</span>}
+          {scheduleTemplates.map((tpl) => (
+            <div key={tpl.id} className="preset-card">
+              <div className="preset-card-header" onClick={() => setExpandedTpl(expandedTpl === tpl.id ? null : tpl.id)}>
+                <div className="preset-card-info" style={{ gap: 8 }}>
+                  <span className="preset-card-name">{tpl.name}</span>
+                  <span className="badge badge-daily">{scheduleLabel(tpl)}</span>
+                  <span className="preset-card-count">{tpl.items.length} items</span>
                 </div>
-                <div className="preset-card-actions">
-                  <button className="btn btn-sm btn-ghost btn-delete" onClick={() => setConfirmDeleteTemplate(t.id)}>
+                <div className="preset-card-actions" onClick={(e) => e.stopPropagation()}>
+                  <button className="btn btn-sm btn-ghost btn-delete" onClick={() => setConfirmDeleteTpl(tpl.id)}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                   </button>
                 </div>
               </div>
+              {tpl.description && expandedTpl === tpl.id && (
+                <p className="text-muted" style={{ fontSize: '0.82rem', padding: '0 12px 4px', margin: 0 }}>{tpl.description}</p>
+              )}
+              {expandedTpl === tpl.id && (
+                <div className="preset-card-body">
+                  {tpl.items.map((it, i) => (
+                    <div key={it.id || i} className="preset-item-row">
+                      <span className={`type-tag type-${it.type}`}>{it.type}</span>
+                      <span className="preset-item-title">{it.title}</span>
+                      {it.type === 'task' && it.target && <span className="text-muted">target: {it.target}</span>}
+                      {it.deadlineTime && <span className="text-muted">{it.deadlineTime}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>
-
-        {/* Instances for selected day */}
-        {instances.length > 0 && (
-          <div style={{ marginTop: 16 }}>
-            <h3 className="presets-title" style={{ fontSize: '0.95rem' }}>
-              Instances for {selectedDay}
-              <span className="text-muted" style={{ fontSize: '0.8rem', marginLeft: 8 }}>
-                ({templateInstances.length} from templates, {presetInstances.length} from presets, {manualInstances.length} manual)
-              </span>
-            </h3>
-            <div className="presets-list" style={{ marginTop: 8 }}>
-              {instances.map((inst) => (
-                <div key={inst.id} className="preset-card" style={{ opacity: inst.completed ? 0.6 : 1 }}>
-                  <div className="preset-card-header">
-                    <div className="preset-card-info" style={{ gap: 6 }}>
-                      <span className={`type-tag type-${inst.type}`}>{inst.type}</span>
-                      <span className="preset-card-name">{inst.title}</span>
-                      {inst.type === 'task' && (
-                        <span className="text-muted">{inst.progress}/{inst.target}</span>
-                      )}
-                      {inst.sourceTemplateId && <span className="badge badge-daily">template</span>}
-                      {inst.presetId && <span className="badge badge-daily" style={{ background: 'var(--primary)', color: '#fff' }}>preset</span>}
-                      {inst.completed && <span className="text-ok">Done</span>}
-                    </div>
-                    <div className="preset-card-actions" style={{ gap: 4 }}>
-                      {!inst.completed && (
-                        <button className="btn btn-sm btn-ghost btn-complete" onClick={() => updateInstance(inst.id, { completed: true })}>✓</button>
-                      )}
-                      {inst.completed && (
-                        <button className="btn btn-sm btn-ghost" onClick={() => updateInstance(inst.id, { completed: false })}>↩</button>
-                      )}
-                      {inst.type === 'task' && !inst.completed && (
-                        <button className="btn btn-sm btn-ghost" onClick={() => updateInstance(inst.id, { progress: Math.min(inst.progress + 1, inst.target) })}>+1</button>
-                      )}
-                      <button className="btn btn-sm btn-ghost btn-delete" onClick={() => deleteInstance(inst.id)}>✕</button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Presets section */}
@@ -569,7 +557,9 @@ export function SchedulePage({
         </div>
       </div>
 
-      {/* Modals */}
+      {/* ===== MODALS ===== */}
+
+      {/* Daily Note */}
       <Modal open={noteModalOpen} onClose={() => { setNoteModalOpen(false); resetNoteForm(); }} title="New Daily Note">
         <div className="form-group">
           <label>Title</label>
@@ -583,6 +573,7 @@ export function SchedulePage({
         <button className="btn btn-primary btn-full" onClick={handleAddNote}>Create Daily Note</button>
       </Modal>
 
+      {/* Daily Task */}
       <Modal open={taskModalOpen} onClose={() => { setTaskModalOpen(false); resetTaskForm(); }} title="New Daily Task">
         <div className="form-group">
           <label>Title</label>
@@ -600,32 +591,90 @@ export function SchedulePage({
         <button className="btn btn-primary btn-full" onClick={handleAddTask}>Create Daily Task</button>
       </Modal>
 
-      <Modal open={templateModalOpen} onClose={() => { setTemplateModalOpen(false); resetTemplateForm(); }} title="New Daily Template">
-        <div className="form-group">
-          <label>Type</label>
-          <div className="theme-modes" style={{ marginBottom: 8 }}>
-            <button className={`theme-mode-btn ${tmplType === 'note' ? 'active' : ''}`} onClick={() => setTmplType('note')}>Note</button>
-            <button className={`theme-mode-btn ${tmplType === 'task' ? 'active' : ''}`} onClick={() => setTmplType('task')}>Task</button>
-          </div>
+      {/* Template Builder (big modal) */}
+      <Modal open={builderOpen} onClose={() => setBuilderOpen(false)} title="Build Schedule Template">
+        <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: 12 }}>
+          Add notes and tasks that will be included in this template. You'll set the name and schedule on the next step.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: '55vh', overflowY: 'auto', paddingRight: 4 }}>
+          {draftItems.map((d, idx) => (
+            <div key={d.key} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 12, borderRadius: 10, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span className="text-muted" style={{ fontSize: '0.8rem', fontWeight: 600 }}>Item {idx + 1}</span>
+                {draftItems.length > 1 && (
+                  <button className="btn btn-sm btn-ghost btn-delete" onClick={() => removeDraftRow(d.key)}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                )}
+              </div>
+              <div className="theme-modes" style={{ marginBottom: 2 }}>
+                <button className={`theme-mode-btn ${d.type === 'note' ? 'active' : ''}`} onClick={() => updateDraftRow(d.key, { type: 'note' })}>Note</button>
+                <button className={`theme-mode-btn ${d.type === 'task' ? 'active' : ''}`} onClick={() => updateDraftRow(d.key, { type: 'task' })}>Task</button>
+              </div>
+              <input className="input" placeholder="Title" value={d.title} onChange={(e) => updateDraftRow(d.key, { title: e.target.value })} />
+              <input className="input" placeholder="Description (optional)" value={d.description} onChange={(e) => updateDraftRow(d.key, { description: e.target.value })} />
+              {d.type === 'task' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <label style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}>Target:</label>
+                  <input className="input" type="number" min={1} value={d.target} onChange={(e) => updateDraftRow(d.key, { target: Number(e.target.value) })} style={{ width: 80 }} />
+                </div>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <label style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}>Deadline time:</label>
+                <input className="input" type="time" value={d.deadlineTime} onChange={(e) => updateDraftRow(d.key, { deadlineTime: e.target.value })} style={{ width: 120 }} />
+              </div>
+            </div>
+          ))}
         </div>
-        <div className="form-group">
-          <label>Title</label>
-          <input className="input" value={tmplTitle} onChange={(e) => setTmplTitle(e.target.value)} autoFocus placeholder="Template title..." />
-        </div>
-        <div className="form-group">
-          <label>Description</label>
-          <textarea className="input textarea" value={tmplDesc} onChange={(e) => setTmplDesc(e.target.value)} rows={3} placeholder="Optional..." />
-        </div>
-        {tmplType === 'task' && (
-          <div className="form-group">
-            <label>Target amount</label>
-            <input className="input" type="number" min={1} value={tmplTarget} onChange={(e) => setTmplTarget(Number(e.target.value))} />
-          </div>
-        )}
-        <DeadlinePicker value={tmplDeadline} onChange={setTmplDeadline} timeOnly />
-        <button className="btn btn-primary btn-full" onClick={handleAddTemplate}>Create Template</button>
+        <button className="btn btn-full" style={{ marginTop: 12 }} onClick={addDraftRow}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add Item
+        </button>
+        <button className="btn btn-primary btn-full" style={{ marginTop: 8 }} onClick={handleBuilderSubmit}>
+          Next: Set Schedule
+        </button>
       </Modal>
 
+      {/* Template Confirm (small modal) */}
+      <Modal open={confirmOpen} onClose={() => setConfirmOpen(false)} title="Confirm Template">
+        <div className="form-group">
+          <label>Template Name</label>
+          <input className="input" value={tplName} onChange={(e) => setTplName(e.target.value)} autoFocus placeholder="e.g. Weekend Routine" />
+        </div>
+        <div className="form-group">
+          <label>Description (optional)</label>
+          <textarea className="input textarea" value={tplDesc} onChange={(e) => setTplDesc(e.target.value)} rows={2} placeholder="What is this template for?" />
+        </div>
+        <div className="form-group">
+          <label>Schedule (optional)</label>
+          <div className="theme-modes" style={{ marginBottom: 8 }}>
+            <button className={`theme-mode-btn ${dayMode === 'none' ? 'active' : ''}`} onClick={() => setDayMode('none')}>None</button>
+            <button className={`theme-mode-btn ${dayMode === 'weekday' ? 'active' : ''}`} onClick={() => setDayMode('weekday')}>Weekday</button>
+            <button className={`theme-mode-btn ${dayMode === 'date' ? 'active' : ''}`} onClick={() => setDayMode('date')}>Date</button>
+          </div>
+          {dayMode === 'weekday' && (
+            <select className="input" value={selectedWeekday} onChange={(e) => setSelectedWeekday(e.target.value as Weekday)}>
+              {WEEKDAY_LABELS.map((w) => (
+                <option key={w.value} value={w.value}>{w.label}</option>
+              ))}
+            </select>
+          )}
+          {dayMode === 'date' && (
+            <input className="input" type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
+          )}
+        </div>
+        <p className="text-muted" style={{ fontSize: '0.8rem' }}>
+          {draftItems.filter((d) => d.title.trim()).length} item(s) will be included.
+          {dayMode === 'weekday' && ` Items will appear every ${selectedWeekday.charAt(0).toUpperCase() + selectedWeekday.slice(1)}.`}
+          {dayMode === 'date' && selectedDate && ` Items will appear every year on ${selectedDate.slice(5).replace('-', '/')}.`}
+          {dayMode === 'none' && ' No automatic schedule — items won\'t be added automatically.'}
+        </p>
+        <button className="btn btn-primary btn-full" onClick={handleTemplateConfirm} disabled={!tplName.trim()}>
+          Create Template
+        </button>
+      </Modal>
+
+      {/* Save Preset */}
       <Modal open={savePresetOpen} onClose={() => setSavePresetOpen(false)} title="Save Preset">
         <div className="form-group">
           <label>Preset Name</label>
@@ -642,6 +691,7 @@ export function SchedulePage({
         }}>Save Preset</button>
       </Modal>
 
+      {/* Rename Preset */}
       <Modal open={editPresetId !== null} onClose={() => setEditPresetId(null)} title="Rename Preset">
         <div className="form-group">
           <label>Preset Name</label>
@@ -650,7 +700,7 @@ export function SchedulePage({
         <button className="btn btn-primary btn-full" onClick={handleEditPresetSave}>Save</button>
       </Modal>
 
-      {/* Warn unsaved dialog */}
+      {/* Warn unsaved */}
       <Modal open={warnUnsaved} onClose={handleWarnCancel} title="Unsaved Daily Items">
         <p className="card-desc" style={{ marginBottom: 4 }}>
           Your current daily items are not saved in any preset. Applying a new preset will replace them.
@@ -671,11 +721,11 @@ export function SchedulePage({
       />
 
       <ConfirmDialog
-        open={confirmDeleteTemplate !== null}
+        open={confirmDeleteTpl !== null}
         title="Delete Template"
-        message={`Delete template "${templates.find((t) => t.id === confirmDeleteTemplate)?.title}"? Existing instances won't be affected.`}
-        onConfirm={() => { if (confirmDeleteTemplate) deleteTemplate(confirmDeleteTemplate); setConfirmDeleteTemplate(null); }}
-        onCancel={() => setConfirmDeleteTemplate(null)}
+        message={`Delete template "${scheduleTemplates.find((t) => t.id === confirmDeleteTpl)?.name}"? Already-materialized items from past runs will remain.`}
+        onConfirm={() => { if (confirmDeleteTpl) deleteScheduleTemplate(confirmDeleteTpl); setConfirmDeleteTpl(null); }}
+        onCancel={() => setConfirmDeleteTpl(null)}
       />
 
       <ConfirmDialog

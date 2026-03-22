@@ -9,11 +9,11 @@ router.get('/', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const { id, title, description, completed, created_at, deadline, target, progress, daily } = req.body;
+  const { id, title, description, completed, created_at, deadline, target, progress, daily, source_schedule_template_id, source_occurrence_date } = req.body;
   const { rows } = await pool.query(
-    `INSERT INTO tasks (id, user_id, title, description, completed, created_at, deadline, target, progress, daily)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-    [id, req.userId, title, description, completed, created_at, deadline, target, progress, daily ?? false],
+    `INSERT INTO tasks (id, user_id, title, description, completed, created_at, deadline, target, progress, daily, source_schedule_template_id, source_occurrence_date)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+    [id, req.userId, title, description, completed, created_at, deadline, target, progress, daily ?? false, source_schedule_template_id ?? null, source_occurrence_date ?? null],
   );
   res.json(rows[0]);
 });

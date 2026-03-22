@@ -19,28 +19,11 @@ async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const url = `${BASE}${path}`;
-  // #region agent log
-  fetch('http://127.0.0.1:7906/ingest/ba2f83d7-6b60-4b49-929c-a8d1f05581d3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2ed1d1'},body:JSON.stringify({sessionId:'2ed1d1',runId:'signup-502-debug',hypothesisId:'H1',location:'src/api/client.ts:request-before-fetch',message:'API request started',data:{url,method:opts.method ?? 'GET',hasToken:Boolean(token)},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
-  let res: Response;
-  try {
-    res = await fetch(url, { ...opts, headers });
-  } catch (err) {
-    // #region agent log
-    fetch('http://127.0.0.1:7906/ingest/ba2f83d7-6b60-4b49-929c-a8d1f05581d3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2ed1d1'},body:JSON.stringify({sessionId:'2ed1d1',runId:'signup-502-debug',hypothesisId:'H1',location:'src/api/client.ts:request-fetch-throw',message:'API request threw before response',data:{url,error:err instanceof Error ? err.message : String(err)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    throw err;
-  }
+  const res = await fetch(url, { ...opts, headers });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    // #region agent log
-    fetch('http://127.0.0.1:7906/ingest/ba2f83d7-6b60-4b49-929c-a8d1f05581d3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2ed1d1'},body:JSON.stringify({sessionId:'2ed1d1',runId:'signup-502-debug',hypothesisId:'H2',location:'src/api/client.ts:request-non-ok',message:'API response not ok',data:{url,status:res.status,statusText:res.statusText,body},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     throw new Error((body as { error?: string }).error || `Request failed (${res.status})`);
   }
-  // #region agent log
-  fetch('http://127.0.0.1:7906/ingest/ba2f83d7-6b60-4b49-929c-a8d1f05581d3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2ed1d1'},body:JSON.stringify({sessionId:'2ed1d1',runId:'signup-502-debug',hypothesisId:'H4',location:'src/api/client.ts:request-success',message:'API response ok',data:{url,status:res.status},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   return res.json();
 }
 
@@ -85,7 +68,7 @@ export const api = {
   updateSettings: (data: Record<string, unknown>) =>
     request<Record<string, unknown>>('/settings', { method: 'PATCH', body: JSON.stringify(data) }),
 
-  // Daily Templates
+  // Daily Templates (legacy)
   getTemplates: () => request<Record<string, unknown>[]>('/templates'),
   createTemplate: (data: Record<string, unknown>) =>
     request<Record<string, unknown>>('/templates', { method: 'POST', body: JSON.stringify(data) }),
@@ -94,7 +77,7 @@ export const api = {
   deleteTemplate: (id: string) =>
     request<{ ok: boolean }>(`/templates/${id}`, { method: 'DELETE' }),
 
-  // Daily Instances
+  // Daily Instances (legacy)
   getInstances: (day: string) => request<Record<string, unknown>[]>(`/instances?day=${day}`),
   createInstance: (data: Record<string, unknown>) =>
     request<Record<string, unknown>>('/instances', { method: 'POST', body: JSON.stringify(data) }),
@@ -117,6 +100,26 @@ export const api = {
     request<{ ok: boolean }>(`/presets/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deletePreset: (id: string) =>
     request<{ ok: boolean }>(`/presets/${id}`, { method: 'DELETE' }),
+
+  // Schedule Templates (new)
+  getScheduleTemplates: () =>
+    request<Record<string, unknown>[]>('/schedule-templates'),
+  createScheduleTemplate: (data: Record<string, unknown>) =>
+    request<Record<string, unknown>>('/schedule-templates', { method: 'POST', body: JSON.stringify(data) }),
+  updateScheduleTemplate: (id: string, data: Record<string, unknown>) =>
+    request<Record<string, unknown>>(`/schedule-templates/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteScheduleTemplate: (id: string) =>
+    request<{ ok: boolean }>(`/schedule-templates/${id}`, { method: 'DELETE' }),
+  materializeScheduleTemplate: (templateId: string, occurrenceDate: string) =>
+    request<{ materialized: number }>('/schedule-templates/materialize', {
+      method: 'POST',
+      body: JSON.stringify({ template_id: templateId, occurrence_date: occurrenceDate }),
+    }),
+  cleanupOccurrence: (occurrenceDate: string) =>
+    request<{ ok: boolean }>('/schedule-templates/cleanup', {
+      method: 'POST',
+      body: JSON.stringify({ occurrence_date: occurrenceDate }),
+    }),
 
   // Import
   importData: (data: Record<string, unknown>) =>

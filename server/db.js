@@ -101,5 +101,37 @@ export async function initDb() {
       font_scale TEXT NOT NULL DEFAULT 'default',
       last_reset_tag TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS schedule_templates (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL DEFAULT '',
+      description TEXT NOT NULL DEFAULT '',
+      schedule_kind TEXT NOT NULL DEFAULT 'none' CHECK (schedule_kind IN ('weekday', 'date', 'none')),
+      schedule_value TEXT,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS schedule_template_items (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      template_id UUID NOT NULL REFERENCES schedule_templates(id) ON DELETE CASCADE,
+      type TEXT NOT NULL CHECK (type IN ('note', 'task')),
+      title TEXT NOT NULL DEFAULT '',
+      description TEXT NOT NULL DEFAULT '',
+      deadline_time TEXT,
+      target INTEGER,
+      sort_order INTEGER NOT NULL DEFAULT 0
+    );
   `);
+
+  // provenance columns on notes and tasks (idempotent)
+  const alterCols = [
+    'ALTER TABLE notes ADD COLUMN IF NOT EXISTS source_schedule_template_id UUID',
+    'ALTER TABLE notes ADD COLUMN IF NOT EXISTS source_occurrence_date DATE',
+    'ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source_schedule_template_id UUID',
+    'ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source_occurrence_date DATE',
+  ];
+  for (const sql of alterCols) {
+    await pool.query(sql).catch(() => {});
+  }
 }

@@ -8,8 +8,8 @@ import { useUserSettings } from './hooks/useUserSettings';
 import { useThemeApply } from './hooks/useTheme';
 import { usePresets } from './hooks/usePresets';
 import { useDailyReset } from './hooks/useDailyReset';
-import { useDailyTemplates } from './hooks/useDailyTemplates';
-import { useDailyInstances } from './hooks/useDailyInstances';
+import { useScheduleTemplates } from './hooks/useScheduleTemplates';
+import { useScheduleTemplateSync } from './hooks/useScheduleTemplateSync';
 import { useLocalImport } from './hooks/useLocalImport';
 import { NotesPage } from './pages/NotesPage';
 import { TasksPage } from './pages/TasksPage';
@@ -73,8 +73,8 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
 
   useDailyReset({ dailyResetTime: settings.dailyResetTime, setNotes, setTasks, lastResetTag, saveResetTag });
 
-  const { templates, addTemplate, updateTemplate, deleteTemplate } = useDailyTemplates();
-  const dailyInstancesHook = useDailyInstances(templates, settings.dailyResetTime, lastResetTag);
+  const { templates: scheduleTemplates, addTemplate: addScheduleTemplate, deleteTemplate: deleteScheduleTemplate } = useScheduleTemplates();
+  useScheduleTemplateSync({ dailyResetTime: settings.dailyResetTime, lastResetTag, templates: scheduleTemplates, setNotes, setTasks });
 
   const { hasLocalData, importLocalData } = useLocalImport();
   const [showImport, setShowImport] = useState(false);
@@ -165,9 +165,9 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
             setNotes={setNotes} setTasks={setTasks}
             presets={presets} addPreset={addPreset}
             updatePreset={updatePreset} deletePreset={deletePreset}
-            templates={templates} addTemplate={addTemplate}
-            updateTemplate={updateTemplate} deleteTemplate={deleteTemplate}
-            dailyInstances={dailyInstancesHook}
+            scheduleTemplates={scheduleTemplates}
+            addScheduleTemplate={addScheduleTemplate}
+            deleteScheduleTemplate={deleteScheduleTemplate}
           />
         )}
         {page === 'notes' && (
