@@ -1,4 +1,6 @@
-import type { DeadlineState, Note } from './types';
+import type { DeadlineState, Note, Task, ScheduleTemplate, Weekday } from './types';
+
+const WEEKDAYS: Weekday[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
 const TIME_ONLY_RE = /^\d{2}:\d{2}$/;
 
@@ -104,4 +106,79 @@ export function itemOriginRowClass(daily?: boolean, fromTemplate?: boolean): str
   if (fromTemplate) return 'row-origin-template';
   if (daily) return 'row-origin-daily';
   return 'row-origin-regular';
+}
+
+/** “App day” after daily reset boundary (same idea as schedule template sync). */
+export function appCalendarDate(resetTime: string): Date {
+  const now = new Date();
+  const [h, m] = (resetTime || '00:00').split(':').map(Number);
+  const resetToday = new Date(now);
+  resetToday.setHours(h, m, 0, 0);
+  if (now < resetToday) {
+    return new Date(now.getTime() - 86400000);
+  }
+  return now;
+}
+
+export function appCalendarDateStr(resetTime: string): string {
+  const d = appCalendarDate(resetTime);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+export function scheduleTemplateMatchesDate(template: ScheduleTemplate, dateStrYMD: string): boolean {
+  if (template.scheduleKind === 'none') return false;
+  if (template.scheduleKind === 'weekday') {
+    const d = new Date(`${dateStrYMD}T12:00:00`);
+    const weekday = WEEKDAYS[d.getDay()];
+    return weekday === template.scheduleValue?.toLowerCase();
+  }
+  if (template.scheduleKind === 'date') {
+    const mmdd = dateStrYMD.slice(5);
+    return mmdd === template.scheduleValue;
+  }
+  return false;
+}
+
+export function templatesMatchingAppDay(templates: ScheduleTemplate[], resetTime: string): ScheduleTemplate[] {
+  const today = appCalendarDateStr(resetTime);
+  return templates.filter((t) => scheduleTemplateMatchesDate(t, today));
+}
+
+export function countActiveExpiredItems(notes: Note[], tasks: Task[], now: number): number {
+  let n = 0;
+  for (const note of notes) {
+    if (!note.completed && isExpired(note.deadline, now)) n += 1;
+  }
+  for (const task of tasks) {
+    if (!task.completed && isExpired(task.deadline, now)) n += 1;
+  }
+  return n;
+}
+
+export function formatLongDate(date: Date): string {
+  return date.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+/** Message when last visit was at least `minDays` ago; otherwise null. */
+export function lastVisitAbsenceLine(lastVisitAtMs: number | null, nowMs: number, minDays = 1): string | null {
+  if (lastVisitAtMs == null || !Number.isFinite(lastVisitAtMs)) return null;
+  const days = Math.floor((nowMs - lastVisitAtMs) / 86400000);
+  if (days < minDays) return null;
+  if (days === 1) return "It's been over a day since your last visit.";
+  return `It's been ${days} days since your last visit.`;
+}
+
+export function lastVisitStorageKey(userId: string): string {
+  return `notetasks.lastVisitAt.${userId}`;
+}
+
+export function greetingDismissedSessionKey(userId: string): string {
+  return `notetasks.greetingDismissed.${userId}`;
+}
+
+/** In a flat filtered list, show a note as its own card only if its parent is not also in the list. */
+export function noteShownAsRootInFiltered(note: Note, filteredIds: Set<string>): boolean {
+  if (!note.parentId) return true;
+  return !filteredIds.has(note.parentId);
 }

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../auth/AuthProvider';
+import { APP_VERSION } from '../version';
 
 export function LoginPage() {
   const { signIn, signUp } = useAuth();
@@ -103,6 +104,8 @@ export function LoginPage() {
             {isSignUp ? 'Sign In' : 'Sign Up'}
           </button>
         </p>
+
+        <p className="login-version">v{APP_VERSION}</p>
       </div>
     </div>
   );

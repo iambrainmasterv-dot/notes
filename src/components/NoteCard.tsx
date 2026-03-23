@@ -18,6 +18,8 @@ interface Props {
   onUpdateNote: (id: string, patch: Partial<Note>) => void;
   /** If true, edit modal includes parent note selector */
   allowParentEdit?: boolean;
+  /** Nesting depth for visual hierarchy (subnotes under a root). */
+  nestDepth?: number;
   onMouseDown?: React.MouseEventHandler<HTMLDivElement>;
   style?: React.CSSProperties;
   className?: string;
@@ -32,6 +34,7 @@ export function NoteCard({
   onToggleCollapse,
   onUpdateNote,
   allowParentEdit = false,
+  nestDepth = 0,
   onMouseDown,
   style,
   className = '',
@@ -78,10 +81,14 @@ export function NoteCard({
   };
 
   const originClass = itemOriginCardClass(note.daily, fromTemplate);
+  const depthClass = nestDepth > 0 ? `note-card-nested note-depth-${Math.min(nestDepth, 4)}` : '';
+  const parentTitle = note.parentId
+    ? (allNotes.find((n) => n.id === note.parentId)?.title ?? 'Parent (missing)')
+    : undefined;
 
   return (
     <div
-      className={`card ${originClass} ${expired ? 'card-expired' : ''} ${note.completed ? 'card-completed' : ''} ${className}`}
+      className={`card ${originClass} ${depthClass} ${expired ? 'card-expired' : ''} ${note.completed ? 'card-completed' : ''} ${className}`}
       style={style}
       onMouseDown={onMouseDown}
     >
@@ -98,9 +105,11 @@ export function NoteCard({
       {note.description && <p className="card-desc">{note.description}</p>}
 
       {note.parentId && (
-        <span className="badge badge-parent">
-          ↳ {allNotes.find((n) => n.id === note.parentId)?.title ?? 'Parent'}
-        </span>
+        <div className="badge-parent-wrap">
+          <span className="badge badge-parent badge-parent-ellipsis" title={parentTitle}>
+            ↳ {parentTitle}
+          </span>
+        </div>
       )}
 
       <div className="card-actions">
@@ -126,7 +135,7 @@ export function NoteCard({
             {note.collapsed ? `▸ ${childNotes.length} subnotes` : `▾ ${childNotes.length} subnotes`}
           </button>
           {!note.collapsed && (
-            <div className="subnotes-list">
+            <div className="subnotes-list subnotes-list--tree">
               {childNotes.map((child) => (
                 <NoteCard
                   key={child.id}
@@ -138,6 +147,7 @@ export function NoteCard({
                   onToggleCollapse={onToggleCollapse}
                   onUpdateNote={onUpdateNote}
                   allowParentEdit={allowParentEdit}
+                  nestDepth={nestDepth + 1}
                 />
               ))}
             </div>

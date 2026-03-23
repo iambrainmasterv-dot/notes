@@ -1,4 +1,5 @@
 import type { ThemeMode, AccentColor, UIScale, FontScale, ThemeSettings } from '../types';
+import { APP_VERSION } from '../version';
 
 interface Props {
   settings: ThemeSettings;
@@ -136,6 +137,11 @@ export function ThemePanel({ settings, onUpdate, localImportAvailable, onImportL
           onChange={(e) => onUpdate({ dailyResetTime: e.target.value })}
           style={{ width: 'auto' }}
         />
+      </div>
+
+      <div className="theme-section">
+        <span className="theme-label">About</span>
+        <p className="theme-help">NoteTasks version <span className="app-version-strong">{APP_VERSION}</span></p>
       </div>
     </div>
   );

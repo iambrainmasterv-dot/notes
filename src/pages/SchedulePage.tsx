@@ -11,7 +11,7 @@ import { SortControls } from '../components/SortControls';
 import { DeadlineBadge } from '../components/DeadlineBadge';
 import { ProgressBar } from '../components/ProgressBar';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { isExpired, itemOriginRowClass } from '../utils';
+import { isExpired, itemOriginRowClass, noteShownAsRootInFiltered } from '../utils';
 import { useTick } from '../hooks/useTick';
 
 const WEEKDAY_LABELS: { value: Weekday; label: string }[] = [
@@ -147,6 +147,13 @@ export function SchedulePage({
       return 0;
     });
   }, [allDailyItems, search, sortField, sortDir]);
+
+  const visibleFiltered = useMemo(() => {
+    const ids = new Set(filtered.map((i) => i.id));
+    return filtered.filter(
+      (item) => item.type !== 'note' || noteShownAsRootInFiltered(item as Note, ids),
+    );
+  }, [filtered]);
 
   const handleToggleCollapse = (id: string) => {
     const note = notes.find((n) => n.id === id);
@@ -339,7 +346,7 @@ export function SchedulePage({
     window.addEventListener('mouseup', handleUp);
   };
 
-  const tableDeleteItem = tableDeleteId ? filtered.find((i) => i.id === tableDeleteId.id) : null;
+  const tableDeleteItem = tableDeleteId ? visibleFiltered.find((i) => i.id === tableDeleteId.id) : null;
 
   // Schedule template helpers
   const scheduleLabel = (tpl: ScheduleTemplate) => {
@@ -391,8 +398,8 @@ export function SchedulePage({
 
       {viewMode === 'list' && (
         <div className="card-grid">
-          {filtered.length === 0 && <p className="empty-state">No daily items yet. Create one, apply a preset, or set up a template!</p>}
-          {filtered.map((item) => {
+          {visibleFiltered.length === 0 && <p className="empty-state">No daily items yet. Create one, apply a preset, or set up a template!</p>}
+          {visibleFiltered.map((item) => {
             if (item.type === 'note') {
               return (
                 <NoteCard key={item.id} note={item as Note} allNotes={notes} now={now}
@@ -415,10 +422,10 @@ export function SchedulePage({
               <tr><th>Type</th><th>Title</th><th>Progress</th><th>Deadline</th><th>Status</th><th>Actions</th></tr>
             </thead>
             <tbody>
-              {filtered.length === 0 && (
+              {visibleFiltered.length === 0 && (
                 <tr><td colSpan={6} className="empty-state">No daily items yet.</td></tr>
               )}
-              {filtered.map((item) => {
+              {visibleFiltered.map((item) => {
                 const fromT = item.type === 'note'
                   ? Boolean((item as Note).sourceScheduleTemplateId)
                   : Boolean((item as Task).sourceScheduleTemplateId);
@@ -431,7 +438,9 @@ export function SchedulePage({
                       <ItemOriginBadges daily={item.daily} fromTemplate={fromT} />
                     </div>
                   </td>
-                  <td className="td-title">{item.title}</td>
+                  <td className={`td-title ${item.type === 'note' && (item as Note).parentId ? 'td-title-subnote' : ''}`}>
+                    <span className="td-title-text">{item.title}</span>
+                  </td>
                   <td>{item.type === 'task' ? <ProgressBar progress={(item as Task).progress} target={(item as Task).target} compact /> : '—'}</td>
                   <td>{item.deadline ? <DeadlineBadge deadline={item.deadline} now={now} completed={item.completed} /> : <span className="text-muted">—</span>}</td>
                   <td>{item.completed ? <span className="text-ok">Done</span> : exp ? <span className="text-danger">Expired</span> : <span className="text-ok">Active</span>}</td>
@@ -448,8 +457,8 @@ export function SchedulePage({
 
       {viewMode === 'canvas' && (
         <div className="canvas-view">
-          {filtered.length === 0 && <p className="empty-state" style={{ position: 'absolute', width: '100%', top: '40%' }}>No daily items yet.</p>}
-          {filtered.map((item, idx) => {
+          {visibleFiltered.length === 0 && <p className="empty-state" style={{ position: 'absolute', width: '100%', top: '40%' }}>No daily items yet.</p>}
+          {visibleFiltered.map((item, idx) => {
             const base = canvasPos(idx);
             const offset = dragOffsets[item.id] ?? { x: 0, y: 0 };
             if (item.type === 'note') {

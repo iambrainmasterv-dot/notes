@@ -170,7 +170,9 @@ export function NotesPage({ notes, addNote, updateNote, deleteNote, completeNote
                     itemOriginRowClass(note.daily, Boolean(note.sourceScheduleTemplateId)),
                   ].filter(Boolean).join(' ')}
                 >
-                  <td className="td-title">{note.parentId ? '↳ ' : ''}{note.title}</td>
+                  <td className={`td-title ${note.parentId ? 'td-title-subnote' : ''}`}>
+                    <span className="td-title-text">{note.title}</span>
+                  </td>
                   <td><ItemOriginBadges daily={note.daily} fromTemplate={Boolean(note.sourceScheduleTemplateId)} /></td>
                   <td className="td-desc">{note.description || '—'}</td>
                   <td>{note.deadline ? <DeadlineBadge deadline={note.deadline} now={now} completed={note.completed} /> : <span className="text-muted">—</span>}</td>

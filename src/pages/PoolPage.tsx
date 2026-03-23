@@ -8,7 +8,7 @@ import { SortControls } from '../components/SortControls';
 import { DeadlineBadge } from '../components/DeadlineBadge';
 import { ProgressBar } from '../components/ProgressBar';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { isExpired, itemOriginRowClass } from '../utils';
+import { isExpired, itemOriginRowClass, noteShownAsRootInFiltered } from '../utils';
 import { useTick } from '../hooks/useTick';
 
 interface Props {
@@ -69,6 +69,13 @@ export function PoolPage({
       return 0;
     });
   }, [allItems, search, sortField, sortDir]);
+
+  const visibleFiltered = useMemo(() => {
+    const ids = new Set(filtered.map((i) => i.id));
+    return filtered.filter(
+      (item) => item.type !== 'note' || noteShownAsRootInFiltered(item as Note, ids),
+    );
+  }, [filtered]);
 
   const handleToggleCollapse = (id: string) => {
     const note = notes.find((n) => n.id === id);
@@ -131,13 +138,13 @@ export function PoolPage({
     window.addEventListener('mouseup', handleUp);
   };
 
-  const tableDeleteItem = tableDeleteId ? filtered.find((i) => i.id === tableDeleteId.id) : null;
+  const tableDeleteItem = tableDeleteId ? visibleFiltered.find((i) => i.id === tableDeleteId.id) : null;
 
   return (
     <div className="page">
       <header className="page-header">
         <h1 className="page-title">Pool</h1>
-        <span className="text-muted" style={{ fontSize: '0.85rem' }}>{filtered.length} active items</span>
+        <span className="text-muted" style={{ fontSize: '0.85rem' }}>{visibleFiltered.length} active items</span>
       </header>
 
       <div className="page-toolbar">
@@ -156,8 +163,8 @@ export function PoolPage({
 
       {viewMode === 'list' && (
         <div className="card-grid">
-          {filtered.length === 0 && <p className="empty-state">No active items. Everything is completed!</p>}
-          {filtered.map((item) => {
+          {visibleFiltered.length === 0 && <p className="empty-state">No active items. Everything is completed!</p>}
+          {visibleFiltered.map((item) => {
             if (item.type === 'note') {
               return (
                 <NoteCard key={item.id} note={item as Note} allNotes={notes} now={now}
@@ -180,10 +187,10 @@ export function PoolPage({
               <tr><th>Type</th><th>Title</th><th>Description</th><th>Progress</th><th>Deadline</th><th>Status</th><th>Actions</th></tr>
             </thead>
             <tbody>
-              {filtered.length === 0 && (
+              {visibleFiltered.length === 0 && (
                 <tr><td colSpan={7} className="empty-state">No active items.</td></tr>
               )}
-              {filtered.map((item) => {
+              {visibleFiltered.map((item) => {
                 const done = item.completed;
                 const exp = !done && isExpired(item.deadline, now);
                 const fromT = item.type === 'note'
@@ -197,7 +204,9 @@ export function PoolPage({
                       <ItemOriginBadges daily={item.daily} fromTemplate={fromT} />
                     </div>
                   </td>
-                  <td className="td-title">{item.title}</td>
+                  <td className={`td-title ${item.type === 'note' && (item as Note).parentId ? 'td-title-subnote' : ''}`}>
+                    <span className="td-title-text">{item.title}</span>
+                  </td>
                   <td className="td-desc">{item.description || '—'}</td>
                   <td>{item.type === 'task' ? <ProgressBar progress={(item as Task).progress} target={(item as Task).target} compact /> : '—'}</td>
                   <td>{item.deadline ? <DeadlineBadge deadline={item.deadline} now={now} completed={done} /> : <span className="text-muted">—</span>}</td>
@@ -215,8 +224,8 @@ export function PoolPage({
 
       {viewMode === 'canvas' && (
         <div className="canvas-view">
-          {filtered.length === 0 && <p className="empty-state" style={{ position: 'absolute', width: '100%', top: '40%' }}>No active items.</p>}
-          {filtered.map((item, idx) => {
+          {visibleFiltered.length === 0 && <p className="empty-state" style={{ position: 'absolute', width: '100%', top: '40%' }}>No active items.</p>}
+          {visibleFiltered.map((item, idx) => {
             const base = canvasPos(idx);
             const offset = dragOffsets[item.id] ?? { x: 0, y: 0 };
             if (item.type === 'note') {

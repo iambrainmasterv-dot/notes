@@ -21,6 +21,17 @@ import { CompletedPage } from './pages/CompletedPage';
 import { ThemePanel } from './components/ThemePanel';
 import { NotificationBell } from './components/NotificationBell';
 import { Toasts } from './components/Toasts';
+import { GreetingScreen } from './components/GreetingScreen';
+import { APP_VERSION } from './version';
+import {
+  appCalendarDate,
+  countActiveExpiredItems,
+  formatLongDate,
+  greetingDismissedSessionKey,
+  lastVisitAbsenceLine,
+  lastVisitStorageKey,
+  templatesMatchingAppDay,
+} from './utils';
 
 const tabs: { key: Page; label: string; icon: React.ReactNode }[] = [
   {
@@ -54,6 +65,7 @@ export default function App() {
         <div className="login-card" style={{ textAlign: 'center' }}>
           <div className="brand-mark">N</div>
           <p style={{ marginTop: 12, color: 'var(--text-secondary)' }}>Loading…</p>
+          <p className="login-version" style={{ marginTop: 16 }}>v{APP_VERSION}</p>
         </div>
       </div>
     );
@@ -136,8 +148,67 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
     [notes, tasks],
   );
 
+  const userId = user?.id ?? '';
+  const [greetingOpen, setGreetingOpen] = useState(false);
+
+  useEffect(() => {
+    if (!userId || typeof sessionStorage === 'undefined') {
+      setGreetingOpen(false);
+      return;
+    }
+    const dismissed = sessionStorage.getItem(greetingDismissedSessionKey(userId)) === '1';
+    setGreetingOpen(!dismissed);
+  }, [userId]);
+
+  const lastVisitAtMs = useMemo(() => {
+    if (!userId || typeof localStorage === 'undefined') return null;
+    const raw = localStorage.getItem(lastVisitStorageKey(userId));
+    if (!raw) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }, [userId]);
+
+  const greetingTodayLabel = useMemo(
+    () => formatLongDate(appCalendarDate(settings.dailyResetTime)),
+    [settings.dailyResetTime],
+  );
+
+  const greetingLastVisitLine = useMemo(
+    () => lastVisitAbsenceLine(lastVisitAtMs, now, 1),
+    [lastVisitAtMs, now],
+  );
+
+  const greetingExpiredCount = useMemo(
+    () => countActiveExpiredItems(notes, tasks, now),
+    [notes, tasks, now],
+  );
+
+  const greetingTemplatesToday = useMemo(
+    () => templatesMatchingAppDay(scheduleTemplates, settings.dailyResetTime),
+    [scheduleTemplates, settings.dailyResetTime],
+  );
+
+  const handleGreetingDismiss = useCallback(() => {
+    if (userId && typeof localStorage !== 'undefined') {
+      localStorage.setItem(lastVisitStorageKey(userId), String(Date.now()));
+    }
+    if (userId && typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem(greetingDismissedSessionKey(userId), '1');
+    }
+    setGreetingOpen(false);
+  }, [userId]);
+
   return (
     <div className="app">
+      <GreetingScreen
+        open={greetingOpen}
+        onGetToWork={handleGreetingDismiss}
+        todayLabel={greetingTodayLabel}
+        lastVisitLine={greetingLastVisitLine}
+        expiredCount={greetingExpiredCount}
+        templatesToday={greetingTemplatesToday}
+      />
+
       <Toasts toasts={toasts} onDismiss={dismissToast} />
 
       <nav className="sidebar">
@@ -202,6 +273,10 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
           <div className="sidebar-user">
             <span className="user-email" title={user?.email ?? ''}>{user?.email ?? ''}</span>
             <button className="btn btn-sm btn-ghost" onClick={signOut}>Sign Out</button>
+          </div>
+
+          <div className="sidebar-version" aria-hidden>
+            <span className="app-version-pill">v{APP_VERSION}</span>
           </div>
         </div>
       </nav>
