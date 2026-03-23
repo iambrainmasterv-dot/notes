@@ -1168,6 +1168,33 @@ body {
   z-index: 200;
 }
 
+/* Desktop only: panel was clipped by sidebar overflow and/or aligned so wide panel sat off the left edge of the viewport. Mobile (≤768px) unchanged. */
+@media (min-width: 769px) {
+  .sidebar {
+    overflow: visible;
+    z-index: 15;
+  }
+
+  .sidebar-nav {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .notif-bell-wrap {
+    z-index: 25;
+  }
+
+  .notif-dropdown {
+    left: 0;
+    right: auto;
+    width: min(360px, calc(100vw - 24px));
+    max-height: min(70vh, calc(100dvh - 72px));
+    z-index: 50;
+  }
+}
+
 .notif-dropdown-header {
   display: flex;
   align-items: center;
