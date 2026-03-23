@@ -4,7 +4,7 @@ import { ProgressBar } from './ProgressBar';
 import { DeadlineBadge } from './DeadlineBadge';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ItemOriginBadges } from './ItemOriginBadges';
-import { isExpired } from '../utils';
+import { isExpired, itemOriginCardClass } from '../utils';
 
 interface Props {
   task: Task;
@@ -28,8 +28,10 @@ export function TaskCard({ task, now, onUpdate, onComplete, onDelete }: Props) {
     setProgress(task.progress + amount);
   };
 
+  const originClass = itemOriginCardClass(task.daily, fromTemplate);
+
   return (
-    <div className={`card ${expired ? 'card-expired' : ''} ${task.completed ? 'card-completed' : ''}`}>
+    <div className={`card ${originClass} ${expired ? 'card-expired' : ''} ${task.completed ? 'card-completed' : ''}`}>
       <div className="card-header">
         <h3 className="card-title">{task.title}</h3>
         <div className="card-header-badges">

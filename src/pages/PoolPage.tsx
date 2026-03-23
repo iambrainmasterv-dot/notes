@@ -8,7 +8,7 @@ import { SortControls } from '../components/SortControls';
 import { DeadlineBadge } from '../components/DeadlineBadge';
 import { ProgressBar } from '../components/ProgressBar';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { isExpired } from '../utils';
+import { isExpired, itemOriginRowClass } from '../utils';
 import { useTick } from '../hooks/useTick';
 
 interface Props {
@@ -190,7 +190,7 @@ export function PoolPage({
                   ? Boolean((item as Note).sourceScheduleTemplateId)
                   : Boolean((item as Task).sourceScheduleTemplateId);
                 return (
-                <tr key={item.id} className={exp ? 'row-expired' : ''}>
+                <tr key={item.id} className={[exp && 'row-expired', itemOriginRowClass(item.daily, fromT)].filter(Boolean).join(' ')}>
                   <td>
                     <span className={`type-tag type-${item.type}`}>{item.type}</span>
                     <div className="td-origin-wrap">

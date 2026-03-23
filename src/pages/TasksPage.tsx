@@ -9,7 +9,7 @@ import { DeadlineBadge } from '../components/DeadlineBadge';
 import { ItemOriginBadges } from '../components/ItemOriginBadges';
 import { ProgressBar } from '../components/ProgressBar';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { isExpired } from '../utils';
+import { isExpired, itemOriginRowClass } from '../utils';
 import { useTick } from '../hooks/useTick';
 
 interface Props {
@@ -170,8 +170,9 @@ export function TasksPage({ tasks, addTask, updateTask, deleteTask, completeTask
             <tbody>
               {filtered.map((task) => {
                 const exp = !task.completed && isExpired(task.deadline, now);
+                const fromT = Boolean(task.sourceScheduleTemplateId);
                 return (
-                <tr key={task.id} className={exp ? 'row-expired' : ''}>
+                <tr key={task.id} className={[exp && 'row-expired', itemOriginRowClass(task.daily, fromT)].filter(Boolean).join(' ')}>
                   <td className="td-title">
                     {task.title}
                     <div className="td-origin-wrap">

@@ -7,6 +7,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { DeadlineBadge } from '../components/DeadlineBadge';
 import { ItemOriginBadges } from '../components/ItemOriginBadges';
 import { useTick } from '../hooks/useTick';
+import { itemOriginRowClass, itemOriginCardClass } from '../utils';
 
 interface Props {
   notes: Note[];
@@ -88,8 +89,13 @@ export function CompletedPage({
 
   const confirmSingleItem = filtered.find((i) => i.id === confirmSingleId);
 
-  const renderRow = (item: Item) => (
-    <div key={item.id} className={`completed-row ${selected.has(item.id) ? 'selected' : ''}`}>
+  const renderRow = (item: Item) => {
+    const fromT = item.type === 'note'
+      ? Boolean((item as Note).sourceScheduleTemplateId)
+      : Boolean((item as Task).sourceScheduleTemplateId);
+    const originRow = itemOriginRowClass(item.daily, fromT);
+    return (
+    <div key={item.id} className={`completed-row ${originRow} ${selected.has(item.id) ? 'selected' : ''}`}>
       <label className="completed-check">
         <input type="checkbox" checked={selected.has(item.id)} onChange={() => toggle(item.id)} />
       </label>
@@ -124,6 +130,7 @@ export function CompletedPage({
       </div>
     </div>
   );
+  };
 
   return (
     <div className="page">
@@ -177,8 +184,12 @@ export function CompletedPage({
               {filtered.length === 0 && (
                 <tr><td colSpan={6} className="empty-state">No completed items yet.</td></tr>
               )}
-              {filtered.map((item) => (
-                <tr key={item.id} className={selected.has(item.id) ? 'row-selected' : ''}>
+              {filtered.map((item) => {
+                const fromT = item.type === 'note'
+                  ? Boolean((item as Note).sourceScheduleTemplateId)
+                  : Boolean((item as Task).sourceScheduleTemplateId);
+                return (
+                <tr key={item.id} className={[selected.has(item.id) && 'row-selected', itemOriginRowClass(item.daily, fromT)].filter(Boolean).join(' ')}>
                   <td><input type="checkbox" checked={selected.has(item.id)} onChange={() => toggle(item.id)} style={{ accentColor: 'var(--primary)', cursor: 'pointer' }} /></td>
                   <td><span className={`type-tag type-${item.type}`}>{item.type}</span></td>
                   <td className="td-title">{item.title}</td>
@@ -189,7 +200,7 @@ export function CompletedPage({
                     <button className="btn btn-sm btn-ghost btn-delete" onClick={() => setConfirmSingleId(item.id)}>✕</button>
                   </td>
                 </tr>
-              ))}
+              );})}
             </tbody>
           </table>
         </div>
@@ -204,9 +215,13 @@ export function CompletedPage({
             const row = Math.floor(idx / cols);
             const x = 40 + col * 310;
             const y = 40 + row * 140;
+            const fromT = item.type === 'note'
+              ? Boolean((item as Note).sourceScheduleTemplateId)
+              : Boolean((item as Task).sourceScheduleTemplateId);
+            const originCard = itemOriginCardClass(item.daily, fromT);
             return (
               <div key={item.id} className="canvas-card" style={{ position: 'absolute', left: x, top: y, width: 280 }}>
-                <div className={`card ${selected.has(item.id) ? 'card-selected' : ''}`}>
+                <div className={`card ${originCard} ${selected.has(item.id) ? 'card-selected' : ''}`}>
                   <div className="card-header">
                     <input type="checkbox" checked={selected.has(item.id)} onChange={() => toggle(item.id)} style={{ accentColor: 'var(--primary)', cursor: 'pointer' }} />
                     <span className={`type-tag type-${item.type}`}>{item.type}</span>

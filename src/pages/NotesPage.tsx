@@ -6,7 +6,7 @@ import { DeadlinePicker } from '../components/DeadlinePicker';
 import { SearchBar } from '../components/SearchBar';
 import { SortControls } from '../components/SortControls';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { isExpired } from '../utils';
+import { isExpired, itemOriginRowClass } from '../utils';
 import { useTick } from '../hooks/useTick';
 import { DeadlineBadge } from '../components/DeadlineBadge';
 import { ItemOriginBadges } from '../components/ItemOriginBadges';
@@ -163,7 +163,13 @@ export function NotesPage({ notes, addNote, updateNote, deleteNote, completeNote
             </thead>
             <tbody>
               {filtered.map((note) => (
-                <tr key={note.id} className={!note.completed && isExpired(note.deadline, now) ? 'row-expired' : ''}>
+                <tr
+                  key={note.id}
+                  className={[
+                    !note.completed && isExpired(note.deadline, now) && 'row-expired',
+                    itemOriginRowClass(note.daily, Boolean(note.sourceScheduleTemplateId)),
+                  ].filter(Boolean).join(' ')}
+                >
                   <td className="td-title">{note.parentId ? '↳ ' : ''}{note.title}</td>
                   <td><ItemOriginBadges daily={note.daily} fromTemplate={Boolean(note.sourceScheduleTemplateId)} /></td>
                   <td className="td-desc">{note.description || '—'}</td>

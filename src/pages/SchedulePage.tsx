@@ -11,7 +11,7 @@ import { SortControls } from '../components/SortControls';
 import { DeadlineBadge } from '../components/DeadlineBadge';
 import { ProgressBar } from '../components/ProgressBar';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { isExpired } from '../utils';
+import { isExpired, itemOriginRowClass } from '../utils';
 import { useTick } from '../hooks/useTick';
 
 const WEEKDAY_LABELS: { value: Weekday; label: string }[] = [
@@ -424,7 +424,7 @@ export function SchedulePage({
                   : Boolean((item as Task).sourceScheduleTemplateId);
                 const exp = !item.completed && isExpired(item.deadline, now);
                 return (
-                <tr key={item.id} className={exp ? 'row-expired' : ''}>
+                <tr key={item.id} className={[exp && 'row-expired', itemOriginRowClass(item.daily, fromT)].filter(Boolean).join(' ')}>
                   <td>
                     <span className={`type-tag type-${item.type}`}>{item.type}</span>
                     <div className="td-origin-wrap">

@@ -92,3 +92,16 @@ export function collectDescendantNoteIds(rootId: string, allNotes: Note[]): Set<
   walk(rootId);
   return out;
 }
+
+/** Card/list row CSS classes for visual origin (template > daily > regular). */
+export function itemOriginCardClass(daily?: boolean, fromTemplate?: boolean): string {
+  if (fromTemplate) return 'card-origin-template';
+  if (daily) return 'card-origin-daily';
+  return 'card-origin-regular';
+}
+
+export function itemOriginRowClass(daily?: boolean, fromTemplate?: boolean): string {
+  if (fromTemplate) return 'row-origin-template';
+  if (daily) return 'row-origin-daily';
+  return 'row-origin-regular';
+}

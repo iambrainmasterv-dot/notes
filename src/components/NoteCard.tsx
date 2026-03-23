@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import type { Note } from '../types';
-import { isExpired, collectDescendantNoteIds } from '../utils';
+import { isExpired, collectDescendantNoteIds, itemOriginCardClass } from '../utils';
 import { DeadlineBadge } from './DeadlineBadge';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Modal } from './Modal';
@@ -77,9 +77,11 @@ export function NoteCard({
     setEditOpen(false);
   };
 
+  const originClass = itemOriginCardClass(note.daily, fromTemplate);
+
   return (
     <div
-      className={`card ${expired ? 'card-expired' : ''} ${note.completed ? 'card-completed' : ''} ${className}`}
+      className={`card ${originClass} ${expired ? 'card-expired' : ''} ${note.completed ? 'card-completed' : ''} ${className}`}
       style={style}
       onMouseDown={onMouseDown}
     >

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 interface Props {
   open: boolean;
@@ -29,7 +30,7 @@ export function Modal({ open, onClose, title, children }: Props) {
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div className="modal-overlay" ref={overlayRef} onClick={(e) => e.target === overlayRef.current && onClose()}>
       <div className="modal">
         <div className="modal-header">
@@ -40,6 +41,7 @@ export function Modal({ open, onClose, title, children }: Props) {
         </div>
         <div className="modal-body">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

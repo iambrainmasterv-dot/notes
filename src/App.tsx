@@ -142,8 +142,20 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
 
       <nav className="sidebar">
         <div className="sidebar-brand">
-          <div className="brand-mark">N</div>
-          <span className="brand-text">NoteTasks</span>
+          <div className="sidebar-brand-text">
+            <div className="brand-mark">N</div>
+            <span className="brand-text">NoteTasks</span>
+          </div>
+          <div className={`notif-bell-wrap ${notifOpen ? 'open' : ''}`} onClick={(e) => e.stopPropagation()}>
+            <NotificationBell
+              unreadCount={unreadCount}
+              panelOpen={notifOpen}
+              onTogglePanel={() => setNotifOpen((o) => !o)}
+              notifications={notifications}
+              onMarkRead={markRead}
+              onMarkAllRead={markAllRead}
+            />
+          </div>
         </div>
 
         <ul className="sidebar-nav">
@@ -177,16 +189,6 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
               </span>
               <span className="nav-label">Settings</span>
             </button>
-            <div className={`notif-bell-wrap ${notifOpen ? 'open' : ''}`}>
-              <NotificationBell
-                unreadCount={unreadCount}
-                panelOpen={notifOpen}
-                onTogglePanel={() => setNotifOpen((o) => !o)}
-                notifications={notifications}
-                onMarkRead={markRead}
-                onMarkAllRead={markAllRead}
-              />
-            </div>
           </div>
           {settingsOpen && (
             <ThemePanel
