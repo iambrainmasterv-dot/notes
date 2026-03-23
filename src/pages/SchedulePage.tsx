@@ -340,7 +340,6 @@ export function SchedulePage({
   };
 
   const tableDeleteItem = tableDeleteId ? filtered.find((i) => i.id === tableDeleteId.id) : null;
-  const activeNotes = useMemo(() => notes.filter((n) => !n.completed && n.daily), [notes]);
 
   // Schedule template helpers
   const scheduleLabel = (tpl: ScheduleTemplate) => {
