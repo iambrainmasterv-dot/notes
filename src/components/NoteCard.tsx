@@ -1,8 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import type { Note } from '../types';
-import { isExpired } from '../utils';
+import { isExpired, collectDescendantNoteIds } from '../utils';
 import { DeadlineBadge } from './DeadlineBadge';
 import { ConfirmDialog } from './ConfirmDialog';
+import { Modal } from './Modal';
+import { DeadlinePicker } from './DeadlinePicker';
+import { ItemOriginBadges } from './ItemOriginBadges';
 
 interface Props {
   note: Note;
@@ -11,6 +14,10 @@ interface Props {
   onComplete: (id: string) => void;
   onDelete: (id: string) => void;
   onToggleCollapse: (id: string) => void;
+  /** Persist edits (title, description, deadline, optional parent) */
+  onUpdateNote: (id: string, patch: Partial<Note>) => void;
+  /** If true, edit modal includes parent note selector */
+  allowParentEdit?: boolean;
   onMouseDown?: React.MouseEventHandler<HTMLDivElement>;
   style?: React.CSSProperties;
   className?: string;
@@ -23,27 +30,67 @@ export function NoteCard({
   onComplete,
   onDelete,
   onToggleCollapse,
+  onUpdateNote,
+  allowParentEdit = false,
   onMouseDown,
   style,
   className = '',
 }: Props) {
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const expired = isExpired(note.deadline, now);
+  const [editOpen, setEditOpen] = useState(false);
+  const [eTitle, setETitle] = useState('');
+  const [eDesc, setEDesc] = useState('');
+  const [eDeadline, setEDeadline] = useState<string | undefined>();
+  const [eParentId, setEParentId] = useState<string | undefined>();
+
+  const fromTemplate = Boolean(note.sourceScheduleTemplateId);
+
+  const expired = !note.completed && isExpired(note.deadline, now);
   const childNotes = useMemo(
     () => allNotes.filter((n) => n.parentId === note.id),
     [allNotes, note.id],
   );
 
+  const blockedParentIds = useMemo(() => collectDescendantNoteIds(note.id, allNotes), [note.id, allNotes]);
+  const parentOptions = useMemo(
+    () => allNotes.filter((n) => !blockedParentIds.has(n.id)),
+    [allNotes, blockedParentIds],
+  );
+
+  useEffect(() => {
+    if (!editOpen) return;
+    setETitle(note.title);
+    setEDesc(note.description);
+    setEDeadline(note.deadline);
+    setEParentId(note.parentId);
+  }, [editOpen, note.id, note.title, note.description, note.deadline, note.parentId]);
+
+  const handleSaveEdit = () => {
+    if (!eTitle.trim()) return;
+    const patch: Partial<Note> = {
+      title: eTitle.trim(),
+      description: eDesc.trim(),
+      deadline: eDeadline,
+    };
+    if (allowParentEdit) patch.parentId = eParentId;
+    onUpdateNote(note.id, patch);
+    setEditOpen(false);
+  };
+
   return (
     <div
-      className={`card ${expired ? 'card-expired' : ''} ${className}`}
+      className={`card ${expired ? 'card-expired' : ''} ${note.completed ? 'card-completed' : ''} ${className}`}
       style={style}
       onMouseDown={onMouseDown}
     >
       <div className="card-header">
         <h3 className="card-title">{note.title}</h3>
-        {note.daily && <span className="badge badge-daily">daily</span>}
-        {note.deadline && <DeadlineBadge deadline={note.deadline} now={now} />}
+        <div className="card-header-badges">
+          <ItemOriginBadges daily={note.daily} fromTemplate={fromTemplate} />
+          {note.deadline && (
+            <DeadlineBadge deadline={note.deadline} now={now} completed={note.completed} />
+          )}
+        </div>
       </div>
 
       {note.description && <p className="card-desc">{note.description}</p>}
@@ -55,6 +102,10 @@ export function NoteCard({
       )}
 
       <div className="card-actions">
+        <button type="button" className="btn btn-ghost" onClick={() => setEditOpen(true)} title="Edit note">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          Edit
+        </button>
         {!note.completed && (
           <button className="btn btn-ghost btn-complete" onClick={() => onComplete(note.id)}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
@@ -83,12 +134,44 @@ export function NoteCard({
                   onComplete={onComplete}
                   onDelete={onDelete}
                   onToggleCollapse={onToggleCollapse}
+                  onUpdateNote={onUpdateNote}
+                  allowParentEdit={allowParentEdit}
                 />
               ))}
             </div>
           )}
         </div>
       )}
+
+      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit Note">
+        <div className="form-group">
+          <label>Title</label>
+          <input className="input" value={eTitle} onChange={(e) => setETitle(e.target.value)} autoFocus />
+        </div>
+        <div className="form-group">
+          <label>Description</label>
+          <textarea className="input textarea" value={eDesc} onChange={(e) => setEDesc(e.target.value)} rows={3} />
+        </div>
+        <div key={`dl-${editOpen}-${note.id}`}>
+          <DeadlinePicker value={eDeadline} onChange={setEDeadline} timeOnly={!!note.daily} />
+        </div>
+        {allowParentEdit && (
+          <div className="form-group">
+            <label>Parent Note</label>
+            <select
+              className="input select"
+              value={eParentId ?? ''}
+              onChange={(e) => setEParentId(e.target.value || undefined)}
+            >
+              <option value="">None (top-level)</option>
+              {parentOptions.map((n) => (
+                <option key={n.id} value={n.id}>{n.title}</option>
+              ))}
+            </select>
+          </div>
+        )}
+        <button type="button" className="btn btn-primary btn-full" onClick={handleSaveEdit}>Save</button>
+      </Modal>
 
       <ConfirmDialog
         open={confirmDelete}

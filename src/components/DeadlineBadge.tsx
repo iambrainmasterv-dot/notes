@@ -4,6 +4,8 @@ import { getDeadlineState } from '../utils';
 interface Props {
   deadline: string;
   now: number;
+  /** When true, never show expired — show completed styling instead */
+  completed?: boolean;
 }
 
 const SEVERITY_CLASS: Record<DeadlineState['severity'], string> = {
@@ -13,7 +15,10 @@ const SEVERITY_CLASS: Record<DeadlineState['severity'], string> = {
   expired: 'badge-expired',
 };
 
-export function DeadlineBadge({ deadline, now }: Props) {
+export function DeadlineBadge({ deadline, now, completed }: Props) {
+  if (completed) {
+    return <span className="badge badge-completed-deadline">Completed</span>;
+  }
   const state = getDeadlineState(deadline, now);
   return (
     <span className={`badge ${SEVERITY_CLASS[state.severity]}`}>

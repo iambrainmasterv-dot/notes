@@ -6,6 +6,7 @@ import { DeadlinePicker } from '../components/DeadlinePicker';
 import { SearchBar } from '../components/SearchBar';
 import { SortControls } from '../components/SortControls';
 import { DeadlineBadge } from '../components/DeadlineBadge';
+import { ItemOriginBadges } from '../components/ItemOriginBadges';
 import { ProgressBar } from '../components/ProgressBar';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { isExpired } from '../utils';
@@ -167,18 +168,25 @@ export function TasksPage({ tasks, addTask, updateTask, deleteTask, completeTask
               <tr><th>Title</th><th>Progress</th><th>Deadline</th><th>Status</th><th>Actions</th></tr>
             </thead>
             <tbody>
-              {filtered.map((task) => (
-                <tr key={task.id} className={isExpired(task.deadline, now) ? 'row-expired' : ''}>
-                  <td className="td-title">{task.title}</td>
+              {filtered.map((task) => {
+                const exp = !task.completed && isExpired(task.deadline, now);
+                return (
+                <tr key={task.id} className={exp ? 'row-expired' : ''}>
+                  <td className="td-title">
+                    {task.title}
+                    <div className="td-origin-wrap">
+                      <ItemOriginBadges daily={task.daily} fromTemplate={Boolean(task.sourceScheduleTemplateId)} />
+                    </div>
+                  </td>
                   <td><ProgressBar progress={task.progress} target={task.target} compact /></td>
-                  <td>{task.deadline ? <DeadlineBadge deadline={task.deadline} now={now} /> : <span className="text-muted">—</span>}</td>
-                  <td>{isExpired(task.deadline, now) ? <span className="text-danger">Expired</span> : <span className="text-ok">Active</span>}</td>
+                  <td>{task.deadline ? <DeadlineBadge deadline={task.deadline} now={now} completed={task.completed} /> : <span className="text-muted">—</span>}</td>
+                  <td>{task.completed ? <span className="text-ok">Completed</span> : exp ? <span className="text-danger">Expired</span> : <span className="text-ok">Active</span>}</td>
                   <td className="td-actions">
                     <button className="btn btn-sm btn-ghost btn-complete" onClick={() => completeTask(task.id)}>✓</button>
                     <button className="btn btn-sm btn-ghost btn-delete" onClick={() => setTableDeleteId(task.id)}>✕</button>
                   </td>
                 </tr>
-              ))}
+              );})}
             </tbody>
           </table>
         </div>

@@ -131,6 +131,8 @@ function noteFromApi(raw: Record<string, unknown>): Note {
     position: raw.position_x != null ? { x: raw.position_x as number, y: raw.position_y as number } : undefined,
     collapsed: Boolean(raw.collapsed),
     daily: Boolean(raw.daily),
+    sourceScheduleTemplateId: (raw.source_schedule_template_id as string) || undefined,
+    sourceOccurrenceDate: (raw.source_occurrence_date as string) || undefined,
   };
 }
 
@@ -146,6 +148,8 @@ function taskFromApi(raw: Record<string, unknown>): Task {
     target: (raw.target as number) ?? 10,
     progress: (raw.progress as number) ?? 0,
     daily: Boolean(raw.daily),
+    sourceScheduleTemplateId: (raw.source_schedule_template_id as string) || undefined,
+    sourceOccurrenceDate: (raw.source_occurrence_date as string) || undefined,
   };
 }
 

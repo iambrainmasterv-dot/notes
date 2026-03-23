@@ -3,6 +3,7 @@ import type { Task } from '../types';
 import { ProgressBar } from './ProgressBar';
 import { DeadlineBadge } from './DeadlineBadge';
 import { ConfirmDialog } from './ConfirmDialog';
+import { ItemOriginBadges } from './ItemOriginBadges';
 import { isExpired } from '../utils';
 
 interface Props {
@@ -16,7 +17,8 @@ interface Props {
 export function TaskCard({ task, now, onUpdate, onComplete, onDelete }: Props) {
   const [customVal, setCustomVal] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const expired = isExpired(task.deadline, now);
+  const fromTemplate = Boolean(task.sourceScheduleTemplateId);
+  const expired = !task.completed && isExpired(task.deadline, now);
 
   const setProgress = (val: number) => {
     onUpdate(task.id, { progress: Math.max(0, Math.min(val, task.target)) });
@@ -27,11 +29,15 @@ export function TaskCard({ task, now, onUpdate, onComplete, onDelete }: Props) {
   };
 
   return (
-    <div className={`card ${expired ? 'card-expired' : ''}`}>
+    <div className={`card ${expired ? 'card-expired' : ''} ${task.completed ? 'card-completed' : ''}`}>
       <div className="card-header">
         <h3 className="card-title">{task.title}</h3>
-        {task.daily && <span className="badge badge-daily">daily</span>}
-        {task.deadline && <DeadlineBadge deadline={task.deadline} now={now} />}
+        <div className="card-header-badges">
+          <ItemOriginBadges daily={task.daily} fromTemplate={fromTemplate} />
+          {task.deadline && (
+            <DeadlineBadge deadline={task.deadline} now={now} completed={task.completed} />
+          )}
+        </div>
       </div>
 
       {task.description && <p className="card-desc">{task.description}</p>}

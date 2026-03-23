@@ -4,6 +4,9 @@ import { SearchBar } from '../components/SearchBar';
 import { SortControls } from '../components/SortControls';
 import { ProgressBar } from '../components/ProgressBar';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { DeadlineBadge } from '../components/DeadlineBadge';
+import { ItemOriginBadges } from '../components/ItemOriginBadges';
+import { useTick } from '../hooks/useTick';
 
 interface Props {
   notes: Note[];
@@ -52,6 +55,12 @@ export function CompletedPage({
     });
   }, [allItems, search, sortField, sortDir]);
 
+  const nearestDeadline = useMemo(() => {
+    const ds = filtered.filter((i) => i.deadline).map((i) => i.deadline!).sort();
+    return ds[0];
+  }, [filtered]);
+  const now = useTick(nearestDeadline);
+
   const toggle = (id: string) => {
     setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   };
@@ -87,6 +96,17 @@ export function CompletedPage({
       <div className="completed-info">
         <div className="completed-top">
           <span className={`type-tag type-${item.type}`}>{item.type}</span>
+          <div className="completed-badges-row">
+            <ItemOriginBadges
+              daily={item.daily}
+              fromTemplate={item.type === 'note'
+                ? Boolean((item as Note).sourceScheduleTemplateId)
+                : Boolean((item as Task).sourceScheduleTemplateId)}
+            />
+            {item.deadline && (
+              <DeadlineBadge deadline={item.deadline} now={now} completed />
+            )}
+          </div>
           <span className="completed-title">{item.title}</span>
           {item.type === 'task' && (
             <ProgressBar progress={(item as Task).progress} target={(item as Task).target} compact />

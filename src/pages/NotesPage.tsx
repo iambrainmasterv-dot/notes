@@ -9,6 +9,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { isExpired } from '../utils';
 import { useTick } from '../hooks/useTick';
 import { DeadlineBadge } from '../components/DeadlineBadge';
+import { ItemOriginBadges } from '../components/ItemOriginBadges';
 
 interface Props {
   notes: Note[];
@@ -147,8 +148,9 @@ export function NotesPage({ notes, addNote, updateNote, deleteNote, completeNote
         <div className="card-grid">
           {topLevel.length === 0 && <p className="empty-state">No notes yet. Create one!</p>}
           {topLevel.map((note) => (
-            <NoteCard key={note.id} note={note} allNotes={activeNotes} now={now}
-              onComplete={completeNote} onDelete={deleteNote} onToggleCollapse={handleToggleCollapse} />
+<NoteCard key={note.id} note={note} allNotes={notes} now={now}
+                  onComplete={completeNote} onDelete={deleteNote} onToggleCollapse={handleToggleCollapse}
+                  onUpdateNote={updateNote} allowParentEdit />
           ))}
         </div>
       )}
@@ -157,15 +159,19 @@ export function NotesPage({ notes, addNote, updateNote, deleteNote, completeNote
         <div className="table-wrapper">
           <table className="data-table">
             <thead>
-              <tr><th>Title</th><th>Description</th><th>Deadline</th><th>Status</th><th>Actions</th></tr>
+              <tr><th>Title</th><th>Kind</th><th>Description</th><th>Deadline</th><th>Status</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {filtered.map((note) => (
-                <tr key={note.id} className={isExpired(note.deadline, now) ? 'row-expired' : ''}>
+                <tr key={note.id} className={!note.completed && isExpired(note.deadline, now) ? 'row-expired' : ''}>
                   <td className="td-title">{note.parentId ? '↳ ' : ''}{note.title}</td>
+                  <td><ItemOriginBadges daily={note.daily} fromTemplate={Boolean(note.sourceScheduleTemplateId)} /></td>
                   <td className="td-desc">{note.description || '—'}</td>
-                  <td>{note.deadline ? <DeadlineBadge deadline={note.deadline} now={now} /> : <span className="text-muted">—</span>}</td>
-                  <td>{isExpired(note.deadline, now) ? <span className="text-danger">Expired</span> : <span className="text-ok">Active</span>}</td>
+                  <td>{note.deadline ? <DeadlineBadge deadline={note.deadline} now={now} completed={note.completed} /> : <span className="text-muted">—</span>}</td>
+                  <td>
+                    {note.completed ? <span className="text-ok">Completed</span>
+                      : isExpired(note.deadline, now) ? <span className="text-danger">Expired</span> : <span className="text-ok">Active</span>}
+                  </td>
                   <td className="td-actions">
                     <button className="btn btn-sm btn-ghost btn-complete" onClick={() => completeNote(note.id)}>✓</button>
                     <button className="btn btn-sm btn-ghost btn-delete" onClick={() => setTableDeleteId(note.id)}>✕</button>
@@ -182,8 +188,9 @@ export function NotesPage({ notes, addNote, updateNote, deleteNote, completeNote
           {topLevel.map((note) => {
             const pos = note.position ?? { x: 0, y: 0 };
             return (
-              <NoteCard key={note.id} note={note} allNotes={activeNotes} now={now}
-                onComplete={completeNote} onDelete={deleteNote} onToggleCollapse={handleToggleCollapse}
+<NoteCard key={note.id} note={note} allNotes={notes} now={now}
+                  onComplete={completeNote} onDelete={deleteNote} onToggleCollapse={handleToggleCollapse}
+                  onUpdateNote={updateNote} allowParentEdit
                 onMouseDown={handleCanvasMouseDown(note)} className="canvas-card"
                 style={{ position: 'absolute', left: pos.x, top: pos.y, cursor: 'grab' }} />
             );

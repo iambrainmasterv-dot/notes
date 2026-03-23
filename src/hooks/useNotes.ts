@@ -19,6 +19,8 @@ function toApi(n: Note) {
     position_y: n.position?.y ?? null,
     collapsed: n.collapsed ?? false,
     daily: n.daily ?? false,
+    source_schedule_template_id: n.sourceScheduleTemplateId ?? null,
+    source_occurrence_date: n.sourceOccurrenceDate ?? null,
   };
 }
 
@@ -35,6 +37,8 @@ function fromApi(row: Record<string, unknown>): Note {
     position: row.position_x != null ? { x: row.position_x as number, y: row.position_y as number } : undefined,
     collapsed: row.collapsed as boolean,
     daily: row.daily as boolean,
+    sourceScheduleTemplateId: (row.source_schedule_template_id as string) || undefined,
+    sourceOccurrenceDate: (row.source_occurrence_date as string) || undefined,
   };
 }
 

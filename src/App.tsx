@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import type { Page } from './types';
 import { useAuth } from './auth/AuthProvider';
 import { LoginPage } from './pages/LoginPage';
@@ -11,13 +11,16 @@ import { useDailyReset } from './hooks/useDailyReset';
 import { useScheduleTemplates } from './hooks/useScheduleTemplates';
 import { useScheduleTemplateSync } from './hooks/useScheduleTemplateSync';
 import { useLocalImport } from './hooks/useLocalImport';
+import { useNotifications } from './hooks/useNotifications';
+import { useTick } from './hooks/useTick';
 import { NotesPage } from './pages/NotesPage';
 import { TasksPage } from './pages/TasksPage';
 import { PoolPage } from './pages/PoolPage';
 import { SchedulePage } from './pages/SchedulePage';
 import { CompletedPage } from './pages/CompletedPage';
 import { ThemePanel } from './components/ThemePanel';
-import { Modal } from './components/Modal';
+import { NotificationBell } from './components/NotificationBell';
+import { Toasts } from './components/Toasts';
 
 const tabs: { key: Page; label: string; icon: React.ReactNode }[] = [
   {
@@ -65,6 +68,7 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
   const { user } = useAuth();
   const [page, setPage] = useState<Page>('pool');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
   const { notes, addNote, updateNote, deleteNote, completeNote, recoverNote, setNotes } = useNotes();
   const { tasks, addTask, updateTask, deleteTask, completeTask, recoverTask, setTasks } = useTasks();
   const { settings, update: updateTheme, lastResetTag, saveResetTag } = useUserSettings();
@@ -77,17 +81,45 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
   useScheduleTemplateSync({ dailyResetTime: settings.dailyResetTime, lastResetTag, templates: scheduleTemplates, setNotes, setTasks });
 
   const { hasLocalData, importLocalData } = useLocalImport();
-  const [showImport, setShowImport] = useState(false);
+  const [localImportAvailable, setLocalImportAvailable] = useState(false);
 
-  useEffect(() => {
-    if (hasLocalData()) setShowImport(true);
+  const refreshLocalFlag = useCallback(() => {
+    setLocalImportAvailable(hasLocalData());
   }, [hasLocalData]);
 
-  const handleImport = async () => {
+  useEffect(() => {
+    refreshLocalFlag();
+  }, [refreshLocalFlag, user?.id]);
+
+  useEffect(() => {
+    if (settingsOpen) refreshLocalFlag();
+  }, [settingsOpen, refreshLocalFlag]);
+
+  const handleImportLocal = async () => {
+    if (!window.confirm('Import local notes and tasks into your account? Local copies will be removed after import.')) return;
     await importLocalData();
-    setShowImport(false);
+    refreshLocalFlag();
     window.location.reload();
   };
+
+  const activeForTick = useMemo(
+    () => [...notes.filter((n) => !n.completed), ...tasks.filter((t) => !t.completed)],
+    [notes, tasks],
+  );
+  const nearestDeadline = useMemo(() => {
+    const ds = activeForTick.filter((i) => i.deadline).map((i) => i.deadline!).sort();
+    return ds[0];
+  }, [activeForTick]);
+  const now = useTick(nearestDeadline);
+
+  const {
+    notifications,
+    unreadCount,
+    toasts,
+    dismissToast,
+    markRead,
+    markAllRead,
+  } = useNotifications(notes, tasks, now);
 
   const completedCount = useMemo(
     () => notes.filter((n) => n.completed).length + tasks.filter((t) => t.completed).length,
@@ -106,6 +138,8 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
 
   return (
     <div className="app">
+      <Toasts toasts={toasts} onDismiss={dismissToast} />
+
       <nav className="sidebar">
         <div className="sidebar-brand">
           <div className="brand-mark">N</div>
@@ -115,7 +149,10 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
         <ul className="sidebar-nav">
           {tabs.map((tab) => (
             <li key={tab.key}>
-              <button className={`nav-item ${page === tab.key ? 'active' : ''}`} onClick={() => setPage(tab.key)}>
+              <button
+                className={`nav-item ${page === tab.key ? 'active' : ''}`}
+                onClick={() => { setPage(tab.key); setNotifOpen(false); }}
+              >
                 <span className="nav-icon">{tab.icon}</span>
                 <span className="nav-label">{tab.label}</span>
                 {tab.key === 'completed' && completedCount > 0 && (
@@ -133,13 +170,32 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
         </ul>
 
         <div className="sidebar-bottom">
-          <button className={`nav-item ${settingsOpen ? 'active' : ''}`} onClick={() => setSettingsOpen((p) => !p)}>
-            <span className="nav-icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-            </span>
-            <span className="nav-label">Settings</span>
-          </button>
-          {settingsOpen && <ThemePanel settings={settings} onUpdate={updateTheme} />}
+          <div className="sidebar-bottom-row">
+            <button type="button" className={`nav-item ${settingsOpen ? 'active' : ''}`} onClick={() => setSettingsOpen((p) => !p)}>
+              <span className="nav-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              </span>
+              <span className="nav-label">Settings</span>
+            </button>
+            <div className={`notif-bell-wrap ${notifOpen ? 'open' : ''}`}>
+              <NotificationBell
+                unreadCount={unreadCount}
+                panelOpen={notifOpen}
+                onTogglePanel={() => setNotifOpen((o) => !o)}
+                notifications={notifications}
+                onMarkRead={markRead}
+                onMarkAllRead={markAllRead}
+              />
+            </div>
+          </div>
+          {settingsOpen && (
+            <ThemePanel
+              settings={settings}
+              onUpdate={updateTheme}
+              localImportAvailable={localImportAvailable}
+              onImportLocal={handleImportLocal}
+            />
+          )}
 
           <div className="sidebar-user">
             <span className="user-email" title={user?.email ?? ''}>{user?.email ?? ''}</span>
@@ -148,7 +204,7 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
         </div>
       </nav>
 
-      <main className="main-content">
+      <main className="main-content" onClick={() => setNotifOpen(false)}>
         {page === 'pool' && (
           <PoolPage notes={notes} tasks={tasks}
             updateNote={updateNote} updateTask={updateTask}
@@ -181,16 +237,6 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
             deleteNote={deleteNote} deleteTask={deleteTask} setNotes={setNotes} setTasks={setTasks} />
         )}
       </main>
-
-      <Modal open={showImport} onClose={() => setShowImport(false)} title="Import Local Data">
-        <p className="card-desc">
-          We found notes and tasks saved locally on this device. Would you like to import them into your account?
-        </p>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
-          <button className="btn" onClick={() => setShowImport(false)}>Skip</button>
-          <button className="btn btn-primary" onClick={handleImport}>Import</button>
-        </div>
-      </Modal>
     </div>
   );
 }

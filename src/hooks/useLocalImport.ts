@@ -18,6 +18,8 @@ function noteToApi(n: Note) {
     position_y: n.position?.y ?? null,
     collapsed: n.collapsed ?? false,
     daily: n.daily ?? false,
+    source_schedule_template_id: n.sourceScheduleTemplateId ?? null,
+    source_occurrence_date: n.sourceOccurrenceDate ?? null,
   };
 }
 
@@ -32,6 +34,8 @@ function taskToApi(t: Task) {
     target: t.target,
     progress: t.progress,
     daily: t.daily ?? false,
+    source_schedule_template_id: t.sourceScheduleTemplateId ?? null,
+    source_occurrence_date: t.sourceOccurrenceDate ?? null,
   };
 }
 

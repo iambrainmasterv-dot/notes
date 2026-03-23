@@ -2,6 +2,7 @@ import { useState, useMemo, useRef } from 'react';
 import type { Note, Task, Item, ViewMode, SortField, SortDir, Preset, PresetItem, ScheduleTemplate, ScheduleKind, Weekday } from '../types';
 import type { NewScheduleTemplateData } from '../hooks/useScheduleTemplates';
 import { NoteCard } from '../components/NoteCard';
+import { ItemOriginBadges } from '../components/ItemOriginBadges';
 import { TaskCard } from '../components/TaskCard';
 import { Modal } from '../components/Modal';
 import { DeadlinePicker } from '../components/DeadlinePicker';
@@ -395,8 +396,9 @@ export function SchedulePage({
           {filtered.map((item) => {
             if (item.type === 'note') {
               return (
-                <NoteCard key={item.id} note={item as Note} allNotes={activeNotes} now={now}
-                  onComplete={completeNote} onDelete={deleteNote} onToggleCollapse={handleToggleCollapse} />
+                <NoteCard key={item.id} note={item as Note} allNotes={notes} now={now}
+                  onComplete={completeNote} onDelete={deleteNote} onToggleCollapse={handleToggleCollapse}
+                  onUpdateNote={updateNote} allowParentEdit />
               );
             }
             return (
@@ -417,19 +419,29 @@ export function SchedulePage({
               {filtered.length === 0 && (
                 <tr><td colSpan={6} className="empty-state">No daily items yet.</td></tr>
               )}
-              {filtered.map((item) => (
-                <tr key={item.id} className={isExpired(item.deadline, now) ? 'row-expired' : ''}>
-                  <td><span className={`type-tag type-${item.type}`}>{item.type}</span></td>
+              {filtered.map((item) => {
+                const fromT = item.type === 'note'
+                  ? Boolean((item as Note).sourceScheduleTemplateId)
+                  : Boolean((item as Task).sourceScheduleTemplateId);
+                const exp = !item.completed && isExpired(item.deadline, now);
+                return (
+                <tr key={item.id} className={exp ? 'row-expired' : ''}>
+                  <td>
+                    <span className={`type-tag type-${item.type}`}>{item.type}</span>
+                    <div className="td-origin-wrap">
+                      <ItemOriginBadges daily={item.daily} fromTemplate={fromT} />
+                    </div>
+                  </td>
                   <td className="td-title">{item.title}</td>
                   <td>{item.type === 'task' ? <ProgressBar progress={(item as Task).progress} target={(item as Task).target} compact /> : '—'}</td>
-                  <td>{item.deadline ? <DeadlineBadge deadline={item.deadline} now={now} /> : <span className="text-muted">—</span>}</td>
-                  <td>{item.completed ? <span className="text-ok">Done</span> : isExpired(item.deadline, now) ? <span className="text-danger">Expired</span> : <span className="text-ok">Active</span>}</td>
+                  <td>{item.deadline ? <DeadlineBadge deadline={item.deadline} now={now} completed={item.completed} /> : <span className="text-muted">—</span>}</td>
+                  <td>{item.completed ? <span className="text-ok">Done</span> : exp ? <span className="text-danger">Expired</span> : <span className="text-ok">Active</span>}</td>
                   <td className="td-actions">
                     {!item.completed && <button className="btn btn-sm btn-ghost btn-complete" onClick={() => handleCompleteItem(item)}>✓</button>}
                     <button className="btn btn-sm btn-ghost btn-delete" onClick={() => setTableDeleteId({ id: item.id, type: item.type })}>✕</button>
                   </td>
                 </tr>
-              ))}
+              );})}
             </tbody>
           </table>
         </div>
@@ -445,8 +457,9 @@ export function SchedulePage({
               return (
                 <div key={item.id} style={{ position: 'absolute', left: base.x + offset.x, top: base.y + offset.y, width: 280 }}
                   onMouseDown={handleCanvasMouseDown(item.id, idx)} className="canvas-card">
-                  <NoteCard note={item as Note} allNotes={activeNotes} now={now}
-                    onComplete={completeNote} onDelete={deleteNote} onToggleCollapse={handleToggleCollapse} />
+                  <NoteCard note={item as Note} allNotes={notes} now={now}
+                    onComplete={completeNote} onDelete={deleteNote} onToggleCollapse={handleToggleCollapse}
+                    onUpdateNote={updateNote} allowParentEdit />
                 </div>
               );
             }

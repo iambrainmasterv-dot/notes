@@ -11,6 +11,9 @@ export interface Note {
   position?: { x: number; y: number };
   collapsed?: boolean;
   daily?: boolean;
+  /** Set when materialized from a schedule template */
+  sourceScheduleTemplateId?: string;
+  sourceOccurrenceDate?: string;
 }
 
 export interface Task {
@@ -24,6 +27,8 @@ export interface Task {
   target: number;
   progress: number;
   daily?: boolean;
+  sourceScheduleTemplateId?: string;
+  sourceOccurrenceDate?: string;
 }
 
 export type Item = Note | Task;
@@ -98,4 +103,19 @@ export interface ScheduleTemplate {
   scheduleValue: string | null;
   items: ScheduleTemplateItem[];
   createdAt: string;
+}
+
+export type NotificationLevel = 'info' | 'warning' | 'danger';
+
+export interface AppNotification {
+  id: string;
+  level: NotificationLevel;
+  title: string;
+  message: string;
+  createdAt: number;
+  read: boolean;
+  /** Dedup key e.g. task:id:1h */
+  dedupeKey: string;
+  itemType?: 'note' | 'task';
+  itemId?: string;
 }

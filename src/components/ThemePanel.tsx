@@ -3,6 +3,9 @@ import type { ThemeMode, AccentColor, UIScale, FontScale, ThemeSettings } from '
 interface Props {
   settings: ThemeSettings;
   onUpdate: (patch: Partial<ThemeSettings>) => void;
+  /** True when this device still has notes/tasks in local storage (pre-account). */
+  localImportAvailable: boolean;
+  onImportLocal: () => void | Promise<void>;
 }
 
 const modes: { value: ThemeMode; label: string; icon: string }[] = [
@@ -40,9 +43,26 @@ const fontScales: { value: FontScale; label: string }[] = [
   { value: 'large', label: 'Large' },
 ];
 
-export function ThemePanel({ settings, onUpdate }: Props) {
+export function ThemePanel({ settings, onUpdate, localImportAvailable, onImportLocal }: Props) {
   return (
     <div className="theme-panel">
+      <div className="theme-section">
+        <span className="theme-label">Data</span>
+        <p className="theme-help">
+          {localImportAvailable
+            ? 'Local notes or tasks were found on this device from before you signed in.'
+            : 'No local-only notes or tasks found on this device.'}
+        </p>
+        <button
+          type="button"
+          className="btn btn-full"
+          disabled={!localImportAvailable}
+          onClick={() => onImportLocal()}
+        >
+          Import local notes &amp; tasks
+        </button>
+      </div>
+
       <div className="theme-section">
         <span className="theme-label">Appearance</span>
         <div className="theme-modes">

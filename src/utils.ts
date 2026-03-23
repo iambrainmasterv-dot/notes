@@ -1,4 +1,4 @@
-import type { DeadlineState } from './types';
+import type { DeadlineState, Note } from './types';
 
 const TIME_ONLY_RE = /^\d{2}:\d{2}$/;
 
@@ -80,4 +80,15 @@ export function todayDateStr(): string {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** IDs of note and all nested subnotes (for parent picker validation). */
+export function collectDescendantNoteIds(rootId: string, allNotes: Note[]): Set<string> {
+  const out = new Set<string>();
+  const walk = (id: string) => {
+    out.add(id);
+    allNotes.filter((n) => n.parentId === id).forEach((ch) => walk(ch.id));
+  };
+  walk(rootId);
+  return out;
 }

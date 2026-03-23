@@ -16,6 +16,8 @@ function toApi(t: Task) {
     target: t.target,
     progress: t.progress,
     daily: t.daily ?? false,
+    source_schedule_template_id: t.sourceScheduleTemplateId ?? null,
+    source_occurrence_date: t.sourceOccurrenceDate ?? null,
   };
 }
 
@@ -31,6 +33,8 @@ function fromApi(row: Record<string, unknown>): Task {
     target: row.target as number,
     progress: row.progress as number,
     daily: row.daily as boolean,
+    sourceScheduleTemplateId: (row.source_schedule_template_id as string) || undefined,
+    sourceOccurrenceDate: (row.source_occurrence_date as string) || undefined,
   };
 }
 
