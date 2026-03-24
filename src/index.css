@@ -602,8 +602,31 @@ body {
 }
 
 .card-actions {
-  display: flex; gap: 4px; margin-top: 10px;
-  padding-top: 10px; border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+  min-width: 0;
+}
+
+/* Nested cards are narrower — keep actions on multiple lines without clipping */
+.card .card-actions .btn {
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+
+.card-actions .btn-icon-action {
+  padding: calc(5px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  gap: 4px;
+  font-size: 0.76rem;
+}
+
+.card-actions .btn-icon-only {
+  padding: calc(6px * var(--ui-scale));
+  min-width: calc(32px * var(--ui-scale));
 }
 
 /* =============================================
