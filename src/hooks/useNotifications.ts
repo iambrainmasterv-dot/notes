@@ -13,10 +13,22 @@ export interface ToastItem {
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
+export interface StaleCompletedParams {
+  userId: string;
+  completedCount: number;
+  /** ms since epoch when Completed was last empty; null if unknown */
+  lastCompletedEmptyAtMs: number | null;
+}
+
 /**
  * Scans active notes/tasks for upcoming deadlines; adds deduped panel entries and one-shot toasts.
  */
-export function useNotifications(notes: Note[], tasks: Task[], now: number) {
+export function useNotifications(
+  notes: Note[],
+  tasks: Task[],
+  now: number,
+  staleCompleted?: StaleCompletedParams | null,
+) {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const fired = useRef<Set<string>>(new Set());
@@ -77,6 +89,35 @@ export function useNotifications(notes: Note[], tasks: Task[], now: number) {
       setToasts((prev) => [...prev, { id: n.id, title: n.title, message: n.message, level: n.level }]);
     }
   }, [notes, tasks, now]);
+
+  useEffect(() => {
+    if (!staleCompleted?.userId) return;
+    const { completedCount, lastCompletedEmptyAtMs } = staleCompleted;
+    if (completedCount <= 0 || lastCompletedEmptyAtMs == null) return;
+    if (now - lastCompletedEmptyAtMs < 3 * DAY) return;
+
+    const dedupeKey = 'stale-completed-tab';
+    if (fired.current.has(dedupeKey)) return;
+    fired.current.add(dedupeKey);
+
+    const n: AppNotification = {
+      id: uuid(),
+      level: 'warning',
+      title: 'Clear your Completed tab',
+      message: `You have ${completedCount} completed item${completedCount === 1 ? '' : 's'} waiting. It has been over 3 days since the list was last empty — review, recover, or delete them to stay organized.`,
+      createdAt: Date.now(),
+      read: false,
+      dedupeKey,
+    };
+    setNotifications((prev) => [n, ...prev].slice(0, 200));
+    setToasts((prev) => [...prev, { id: n.id, title: n.title, message: n.message, level: n.level }]);
+  }, [notes, tasks, now, staleCompleted]);
+
+  useEffect(() => {
+    if (staleCompleted?.completedCount === 0) {
+      fired.current.delete('stale-completed-tab');
+    }
+  }, [staleCompleted?.completedCount]);
 
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));

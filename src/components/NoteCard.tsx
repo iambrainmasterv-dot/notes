@@ -1,24 +1,39 @@
 import { useState, useMemo, useEffect } from 'react';
-import type { Note } from '../types';
-import { isExpired, collectDescendantNoteIds, itemOriginCardClass } from '../utils';
+import type { Note, Task } from '../types';
+import {
+  isExpired,
+  collectBlockedIdsForReparent,
+  itemOriginCardClass,
+  childrenOf,
+  buildParentPickerOptions,
+  parseParentPickerValue,
+  parentTitleForItem,
+  effectiveNoteParentType,
+  collectDescendantIds,
+} from '../utils';
 import { DeadlineBadge } from './DeadlineBadge';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Modal } from './Modal';
 import { DeadlinePicker } from './DeadlinePicker';
 import { ItemOriginBadges } from './ItemOriginBadges';
+import { SubItemModal } from './SubItemModal';
+import { TaskCard } from './TaskCard';
 
 interface Props {
   note: Note;
   allNotes: Note[];
+  allTasks: Task[];
   now: number;
-  onComplete: (id: string) => void;
-  onDelete: (id: string) => void;
+  onCompleteNote: (id: string) => void;
+  onCompleteTask: (id: string) => void;
+  onDeleteNote: (id: string) => void;
+  onDeleteTask: (id: string) => void;
   onToggleCollapse: (id: string) => void;
-  /** Persist edits (title, description, deadline, optional parent) */
   onUpdateNote: (id: string, patch: Partial<Note>) => void;
-  /** If true, edit modal includes parent note selector */
+  onUpdateTask: (id: string, patch: Partial<Task>) => void;
+  addNote: (data: Omit<Note, 'id' | 'type' | 'completed' | 'createdAt'>) => void;
+  addTask: (data: Omit<Task, 'id' | 'type' | 'completed' | 'createdAt' | 'progress'>) => void;
   allowParentEdit?: boolean;
-  /** Nesting depth for visual hierarchy (subnotes under a root). */
   nestDepth?: number;
   onMouseDown?: React.MouseEventHandler<HTMLDivElement>;
   style?: React.CSSProperties;
@@ -28,11 +43,17 @@ interface Props {
 export function NoteCard({
   note,
   allNotes,
+  allTasks,
   now,
-  onComplete,
-  onDelete,
+  onCompleteNote,
+  onCompleteTask,
+  onDeleteNote,
+  onDeleteTask,
   onToggleCollapse,
   onUpdateNote,
+  onUpdateTask,
+  addNote,
+  addTask,
   allowParentEdit = false,
   nestDepth = 0,
   onMouseDown,
@@ -44,29 +65,44 @@ export function NoteCard({
   const [eTitle, setETitle] = useState('');
   const [eDesc, setEDesc] = useState('');
   const [eDeadline, setEDeadline] = useState<string | undefined>();
-  const [eParentId, setEParentId] = useState<string | undefined>();
+  const [eParentVal, setEParentVal] = useState('');
+  const [subModal, setSubModal] = useState<'note' | 'task' | null>(null);
 
   const fromTemplate = Boolean(note.sourceScheduleTemplateId);
-
   const expired = !note.completed && isExpired(note.deadline, now);
-  const childNotes = useMemo(
-    () => allNotes.filter((n) => n.parentId === note.id),
-    [allNotes, note.id],
+
+  const { childNotes, childTasks } = useMemo(
+    () => childrenOf({ type: 'note', id: note.id }, allNotes, allTasks),
+    [note.id, allNotes, allTasks],
+  );
+  const childCount = childNotes.length + childTasks.length;
+
+  const blockedIds = useMemo(
+    () => collectBlockedIdsForReparent('note', note.id, allNotes, allTasks),
+    [note.id, allNotes, allTasks],
+  );
+  const parentPickerOpts = useMemo(
+    () =>
+      buildParentPickerOptions(allNotes, allTasks, {
+        excludeIds: blockedIds,
+        dailyOnly: !!note.daily,
+      }),
+    [allNotes, allTasks, blockedIds, note.daily],
   );
 
-  const blockedParentIds = useMemo(() => collectDescendantNoteIds(note.id, allNotes), [note.id, allNotes]);
-  const parentOptions = useMemo(
-    () => allNotes.filter((n) => !blockedParentIds.has(n.id)),
-    [allNotes, blockedParentIds],
-  );
+  const descCounts = useMemo(() => {
+    const { noteIds, taskIds } = collectDescendantIds('note', note.id, allNotes, allTasks);
+    return noteIds.length + taskIds.length;
+  }, [note.id, allNotes, allTasks]);
 
   useEffect(() => {
     if (!editOpen) return;
     setETitle(note.title);
     setEDesc(note.description);
     setEDeadline(note.deadline);
-    setEParentId(note.parentId);
-  }, [editOpen, note.id, note.title, note.description, note.deadline, note.parentId]);
+    const pt = effectiveNoteParentType(note);
+    setEParentVal(note.parentId && pt ? `${pt}:${note.parentId}` : '');
+  }, [editOpen, note.id, note.title, note.description, note.deadline, note.parentId, note.parentType]);
 
   const handleSaveEdit = () => {
     if (!eTitle.trim()) return;
@@ -75,16 +111,24 @@ export function NoteCard({
       description: eDesc.trim(),
       deadline: eDeadline,
     };
-    if (allowParentEdit) patch.parentId = eParentId;
+    if (allowParentEdit) {
+      const parsed = eParentVal ? parseParentPickerValue(eParentVal) : null;
+      if (parsed) {
+        patch.parentId = parsed.id;
+        patch.parentType = parsed.type;
+      } else {
+        patch.parentId = undefined;
+        patch.parentType = undefined;
+      }
+    }
     onUpdateNote(note.id, patch);
     setEditOpen(false);
   };
 
   const originClass = itemOriginCardClass(note.daily, fromTemplate);
   const depthClass = nestDepth > 0 ? `note-card-nested note-depth-${Math.min(nestDepth, 4)}` : '';
-  const parentTitle = note.parentId
-    ? (allNotes.find((n) => n.id === note.parentId)?.title ?? 'Parent (missing)')
-    : undefined;
+  const pt = effectiveNoteParentType(note);
+  const parentTitle = parentTitleForItem(allNotes, allTasks, note.parentId, pt);
 
   return (
     <div
@@ -104,7 +148,7 @@ export function NoteCard({
 
       {note.description && <p className="card-desc">{note.description}</p>}
 
-      {note.parentId && (
+      {note.parentId && parentTitle && (
         <div className="badge-parent-wrap">
           <span className="badge badge-parent badge-parent-ellipsis" title={parentTitle}>
             ↳ {parentTitle}
@@ -118,21 +162,29 @@ export function NoteCard({
           Edit
         </button>
         {!note.completed && (
-          <button className="btn btn-ghost btn-complete" onClick={() => onComplete(note.id)}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-            Complete
-          </button>
+          <>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSubModal('note')} title="Add subnote">
+              + Subnote
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSubModal('task')} title="Add subtask">
+              + Subtask
+            </button>
+            <button type="button" className="btn btn-ghost btn-complete" onClick={() => onCompleteNote(note.id)}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              Complete
+            </button>
+          </>
         )}
-        <button className="btn btn-ghost btn-delete" onClick={() => setConfirmDelete(true)}>
+        <button type="button" className="btn btn-ghost btn-delete" onClick={() => setConfirmDelete(true)}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           Delete
         </button>
       </div>
 
-      {childNotes.length > 0 && (
+      {childCount > 0 && (
         <div className="subnotes">
-          <button className="btn-text" onClick={() => onToggleCollapse(note.id)}>
-            {note.collapsed ? `▸ ${childNotes.length} subnotes` : `▾ ${childNotes.length} subnotes`}
+          <button type="button" className="btn-text" onClick={() => onToggleCollapse(note.id)}>
+            {note.collapsed ? `▸ ${childCount} subitems` : `▾ ${childCount} subitems`}
           </button>
           {!note.collapsed && (
             <div className="subnotes-list subnotes-list--tree">
@@ -141,11 +193,37 @@ export function NoteCard({
                   key={child.id}
                   note={child}
                   allNotes={allNotes}
+                  allTasks={allTasks}
                   now={now}
-                  onComplete={onComplete}
-                  onDelete={onDelete}
+                  onCompleteNote={onCompleteNote}
+                  onCompleteTask={onCompleteTask}
+                  onDeleteNote={onDeleteNote}
+                  onDeleteTask={onDeleteTask}
                   onToggleCollapse={onToggleCollapse}
                   onUpdateNote={onUpdateNote}
+                  onUpdateTask={onUpdateTask}
+                  addNote={addNote}
+                  addTask={addTask}
+                  allowParentEdit={allowParentEdit}
+                  nestDepth={nestDepth + 1}
+                />
+              ))}
+              {childTasks.map((child) => (
+                <TaskCard
+                  key={child.id}
+                  task={child}
+                  allNotes={allNotes}
+                  allTasks={allTasks}
+                  now={now}
+                  onUpdate={onUpdateTask}
+                  onUpdateNote={onUpdateNote}
+                  onCompleteNote={onCompleteNote}
+                  onCompleteTask={onCompleteTask}
+                  onDeleteNote={onDeleteNote}
+                  onDeleteTask={onDeleteTask}
+                  onToggleCollapse={onToggleCollapse}
+                  addNote={addNote}
+                  addTask={addTask}
                   allowParentEdit={allowParentEdit}
                   nestDepth={nestDepth + 1}
                 />
@@ -154,6 +232,17 @@ export function NoteCard({
           )}
         </div>
       )}
+
+      <SubItemModal
+        open={subModal !== null}
+        mode={subModal === 'task' ? 'task' : 'note'}
+        parentType="note"
+        parentId={note.id}
+        dailyBranch={!!note.daily}
+        onClose={() => setSubModal(null)}
+        onCreateNote={(d) => addNote(d)}
+        onCreateTask={(d) => addTask(d)}
+      />
 
       <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit Note">
         <div className="form-group">
@@ -169,15 +258,11 @@ export function NoteCard({
         </div>
         {allowParentEdit && (
           <div className="form-group">
-            <label>Parent Note</label>
-            <select
-              className="input select"
-              value={eParentId ?? ''}
-              onChange={(e) => setEParentId(e.target.value || undefined)}
-            >
+            <label>Parent</label>
+            <select className="input select" value={eParentVal} onChange={(e) => setEParentVal(e.target.value)}>
               <option value="">None (top-level)</option>
-              {parentOptions.map((n) => (
-                <option key={n.id} value={n.id}>{n.title}</option>
+              {parentPickerOpts.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
           </div>
@@ -188,8 +273,8 @@ export function NoteCard({
       <ConfirmDialog
         open={confirmDelete}
         title="Delete Note"
-        message={`Delete "${note.title}"${childNotes.length > 0 ? ` and its ${childNotes.length} subnote(s)` : ''}? This cannot be undone.`}
-        onConfirm={() => { setConfirmDelete(false); onDelete(note.id); }}
+        message={`Delete "${note.title}"${descCounts > 0 ? ` and ${descCounts} nested item(s)` : ''}? This cannot be undone.`}
+        onConfirm={() => { setConfirmDelete(false); onDeleteNote(note.id); }}
         onCancel={() => setConfirmDelete(false)}
       />
     </div>

@@ -1,4 +1,4 @@
-import type { DeadlineState, Note, Task, ScheduleTemplate, Weekday } from './types';
+import type { DeadlineState, Note, Task, ScheduleTemplate, Weekday, ParentType, Item } from './types';
 
 const WEEKDAYS: Weekday[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
@@ -84,15 +84,197 @@ export function todayDateStr(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-/** IDs of note and all nested subnotes (for parent picker validation). */
-export function collectDescendantNoteIds(rootId: string, allNotes: Note[]): Set<string> {
-  const out = new Set<string>();
-  const walk = (id: string) => {
-    out.add(id);
-    allNotes.filter((n) => n.parentId === id).forEach((ch) => walk(ch.id));
+export type ItemParentRef = { type: ParentType; id: string };
+
+/** Legacy rows: note.parentId without parentType implies parent is a note. */
+export function effectiveNoteParentType(n: Note): ParentType | undefined {
+  if (!n.parentId) return undefined;
+  return n.parentType ?? 'note';
+}
+
+/** Legacy tasks may omit parent_type when parent was a note. */
+export function effectiveTaskParentType(t: Task): ParentType | undefined {
+  if (!t.parentId) return undefined;
+  return t.parentType ?? 'note';
+}
+
+export function childrenOf(
+  parent: ItemParentRef,
+  notes: Note[],
+  tasks: Task[],
+): { childNotes: Note[]; childTasks: Task[] } {
+  const childNotes = notes.filter((n) => {
+    if (n.parentId !== parent.id) return false;
+    return effectiveNoteParentType(n) === parent.type;
+  });
+  const childTasks = tasks.filter((t) => {
+    if (t.parentId !== parent.id) return false;
+    return effectiveTaskParentType(t) === parent.type;
+  });
+  return { childNotes, childTasks };
+}
+
+/** Descendants only (excludes root). */
+export function collectDescendantIds(
+  rootType: ParentType,
+  rootId: string,
+  notes: Note[],
+  tasks: Task[],
+): { noteIds: string[]; taskIds: string[] } {
+  const seenN = new Set<string>();
+  const seenT = new Set<string>();
+  const stack: ItemParentRef[] = [{ type: rootType, id: rootId }];
+  while (stack.length) {
+    const ref = stack.pop()!;
+    const { childNotes, childTasks } = childrenOf(ref, notes, tasks);
+    for (const n of childNotes) {
+      if (seenN.has(n.id)) continue;
+      seenN.add(n.id);
+      stack.push({ type: 'note', id: n.id });
+    }
+    for (const t of childTasks) {
+      if (seenT.has(t.id)) continue;
+      seenT.add(t.id);
+      stack.push({ type: 'task', id: t.id });
+    }
+  }
+  return { noteIds: [...seenN], taskIds: [...seenT] };
+}
+
+/** Self + all descendant ids (notes and tasks), for parent picker blocking. */
+export function collectDescendantNoteIds(rootId: string, allNotes: Note[], allTasks: Task[] = []): Set<string> {
+  const { noteIds, taskIds } = collectDescendantIds('note', rootId, allNotes, allTasks);
+  return new Set([rootId, ...noteIds, ...taskIds]);
+}
+
+export function collectBlockedIdsForReparent(
+  rootType: ParentType,
+  rootId: string,
+  notes: Note[],
+  tasks: Task[],
+): Set<string> {
+  const { noteIds, taskIds } = collectDescendantIds(rootType, rootId, notes, tasks);
+  return new Set([rootId, ...noteIds, ...taskIds]);
+}
+
+export interface ParentPickerOption {
+  value: string;
+  kind: ParentType;
+  id: string;
+  depth: number;
+  label: string;
+}
+
+function parentDepthLabel(kind: ParentType, depth: number): string {
+  if (kind === 'note') {
+    if (depth <= 0) return 'Root (note)';
+    if (depth === 1) return 'Subnote';
+    return `Subnote (${depth})`;
+  }
+  if (depth <= 0) return 'Root (task)';
+  if (depth === 1) return 'Subtask';
+  return `Subtask (${depth})`;
+}
+
+function byTitle(a: { title: string }, b: { title: string }) {
+  return a.title.toLowerCase().localeCompare(b.title.toLowerCase());
+}
+
+function isRootNote(n: Note): boolean {
+  return !n.parentId;
+}
+
+function isRootTask(t: Task): boolean {
+  return !t.parentId;
+}
+
+export function buildParentPickerOptions(
+  notes: Note[],
+  tasks: Task[],
+  opts: {
+    excludeIds?: Set<string>;
+    dailyOnly?: boolean;
+  } = {},
+): ParentPickerOption[] {
+  const exclude = opts.excludeIds ?? new Set<string>();
+  const dailyOnly = opts.dailyOnly ?? false;
+
+  const noteOk = (n: Note) => !exclude.has(n.id) && (!dailyOnly || n.daily);
+  const taskOk = (t: Task) => !exclude.has(t.id) && (!dailyOnly || t.daily);
+
+  const out: ParentPickerOption[] = [];
+
+  const walk = (item: Note | Task, depth: number) => {
+    if (item.type === 'note') {
+      const n = item as Note;
+      if (!noteOk(n)) return;
+      out.push({
+        value: `note:${n.id}`,
+        kind: 'note',
+        id: n.id,
+        depth,
+        label: `${parentDepthLabel('note', depth)} — ${n.title}`,
+      });
+      const ref: ItemParentRef = { type: 'note', id: n.id };
+      const { childNotes, childTasks } = childrenOf(ref, notes, tasks);
+      [...childNotes].sort(byTitle).forEach((ch) => walk(ch, depth + 1));
+      [...childTasks].sort(byTitle).forEach((ch) => walk(ch, depth + 1));
+    } else {
+      const t = item as Task;
+      if (!taskOk(t)) return;
+      out.push({
+        value: `task:${t.id}`,
+        kind: 'task',
+        id: t.id,
+        depth,
+        label: `${parentDepthLabel('task', depth)} — ${t.title}`,
+      });
+      const ref: ItemParentRef = { type: 'task', id: t.id };
+      const { childNotes, childTasks } = childrenOf(ref, notes, tasks);
+      [...childNotes].sort(byTitle).forEach((ch) => walk(ch, depth + 1));
+      [...childTasks].sort(byTitle).forEach((ch) => walk(ch, depth + 1));
+    }
   };
-  walk(rootId);
+
+  [...notes.filter((n) => isRootNote(n) && noteOk(n))].sort(byTitle).forEach((n) => walk(n, 0));
+  [...tasks.filter((t) => isRootTask(t) && taskOk(t))].sort(byTitle).forEach((t) => walk(t, 0));
+
   return out;
+}
+
+export function parseParentPickerValue(raw: string): { type: ParentType; id: string } | null {
+  const m = raw.match(/^(note|task):(.+)$/);
+  if (!m) return null;
+  return { type: m[1] as ParentType, id: m[2] };
+}
+
+export function parentTitleForItem(
+  notes: Note[],
+  tasks: Task[],
+  parentId?: string,
+  parentType?: ParentType,
+): string | undefined {
+  if (!parentId) return undefined;
+  const pt = parentType ?? 'note';
+  if (pt === 'note') return notes.find((n) => n.id === parentId)?.title;
+  return tasks.find((t) => t.id === parentId)?.title;
+}
+
+/** In a flat filtered list, show an item as its own card only if its parent is not also in the list. */
+export function itemShownAsRootInFiltered(item: Item, filteredIds: Set<string>): boolean {
+  if (item.type === 'note') {
+    const n = item as Note;
+    if (!n.parentId) return true;
+    return !filteredIds.has(n.parentId);
+  }
+  const t = item as Task;
+  if (!t.parentId) return true;
+  return !filteredIds.has(t.parentId);
+}
+
+/** @deprecated use itemShownAsRootInFiltered */
+export function noteShownAsRootInFiltered(note: Note, filteredIds: Set<string>): boolean {
+  return itemShownAsRootInFiltered(note, filteredIds);
 }
 
 /** Card/list row CSS classes for visual origin (template > daily > regular). */
@@ -177,8 +359,10 @@ export function greetingDismissedSessionKey(userId: string): string {
   return `notetasks.greetingDismissed.${userId}`;
 }
 
-/** In a flat filtered list, show a note as its own card only if its parent is not also in the list. */
-export function noteShownAsRootInFiltered(note: Note, filteredIds: Set<string>): boolean {
-  if (!note.parentId) return true;
-  return !filteredIds.has(note.parentId);
+export function completedLastEmptyStorageKey(userId: string): string {
+  return `notetasks.completedLastEmptyAt.${userId}`;
+}
+
+export function tutorialCompletedStorageKey(userId: string): string {
+  return `notetasks.tutorialCompleted.${userId}`;
 }

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import type { ScheduleTemplate, Weekday } from '../types';
-import type { Note, Task } from '../types';
+import type { ScheduleTemplate, Weekday, Note, Task, ParentType } from '../types';
 import { api } from '../api/client';
 
 const WEEKDAYS: Weekday[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -128,6 +127,7 @@ function noteFromApi(raw: Record<string, unknown>): Note {
     createdAt: (raw.created_at as string) || new Date().toISOString(),
     deadline: (raw.deadline as string) || undefined,
     parentId: (raw.parent_id as string) || undefined,
+    parentType: (raw.parent_type as ParentType) || undefined,
     position: raw.position_x != null ? { x: raw.position_x as number, y: raw.position_y as number } : undefined,
     collapsed: Boolean(raw.collapsed),
     daily: Boolean(raw.daily),
@@ -145,6 +145,8 @@ function taskFromApi(raw: Record<string, unknown>): Task {
     completed: Boolean(raw.completed),
     createdAt: (raw.created_at as string) || new Date().toISOString(),
     deadline: (raw.deadline as string) || undefined,
+    parentId: (raw.parent_id as string) || undefined,
+    parentType: (raw.parent_type as ParentType) || undefined,
     target: (raw.target as number) ?? 10,
     progress: (raw.progress as number) ?? 0,
     daily: Boolean(raw.daily),

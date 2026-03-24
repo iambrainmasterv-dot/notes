@@ -8,23 +8,28 @@ import { SortControls } from '../components/SortControls';
 import { DeadlineBadge } from '../components/DeadlineBadge';
 import { ProgressBar } from '../components/ProgressBar';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { isExpired, itemOriginRowClass, noteShownAsRootInFiltered } from '../utils';
+import { isExpired, itemOriginRowClass, itemShownAsRootInFiltered } from '../utils';
 import { useTick } from '../hooks/useTick';
 
 interface Props {
   notes: Note[];
   tasks: Task[];
+  addNote: (data: Omit<Note, 'id' | 'type' | 'completed' | 'createdAt'>) => void;
+  addTask: (data: Omit<Task, 'id' | 'type' | 'completed' | 'createdAt' | 'progress'>) => void;
   updateNote: (id: string, patch: Partial<Note>) => void;
   updateTask: (id: string, patch: Partial<Task>) => void;
   deleteNote: (id: string) => void;
   deleteTask: (id: string) => void;
   completeNote: (id: string) => void;
   completeTask: (id: string) => void;
+  onPoolQuickCreateNote?: () => void;
+  onPoolQuickCreateTask?: () => void;
 }
 
 export function PoolPage({
-  notes, tasks, updateNote, updateTask,
+  notes, tasks, addNote, addTask, updateNote, updateTask,
   deleteNote, deleteTask, completeNote, completeTask,
+  onPoolQuickCreateNote, onPoolQuickCreateTask,
 }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [search, setSearch] = useState('');
@@ -72,9 +77,7 @@ export function PoolPage({
 
   const visibleFiltered = useMemo(() => {
     const ids = new Set(filtered.map((i) => i.id));
-    return filtered.filter(
-      (item) => item.type !== 'note' || noteShownAsRootInFiltered(item as Note, ids),
-    );
+    return filtered.filter((item) => itemShownAsRootInFiltered(item, ids));
   }, [filtered]);
 
   const handleToggleCollapse = (id: string) => {
@@ -144,7 +147,19 @@ export function PoolPage({
     <div className="page">
       <header className="page-header">
         <h1 className="page-title">Pool</h1>
-        <span className="text-muted" style={{ fontSize: '0.85rem' }}>{visibleFiltered.length} active items</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span className="text-muted" style={{ fontSize: '0.85rem' }}>{visibleFiltered.length} active items</span>
+          {onPoolQuickCreateNote && (
+            <button type="button" className="btn btn-sm btn-primary" onClick={onPoolQuickCreateNote}>
+              Add Note
+            </button>
+          )}
+          {onPoolQuickCreateTask && (
+            <button type="button" className="btn btn-sm btn-primary" onClick={onPoolQuickCreateTask}>
+              Add Task
+            </button>
+          )}
+        </div>
       </header>
 
       <div className="page-toolbar">
@@ -167,14 +182,23 @@ export function PoolPage({
           {visibleFiltered.map((item) => {
             if (item.type === 'note') {
               return (
-                <NoteCard key={item.id} note={item as Note} allNotes={notes} now={now}
-                  onComplete={completeNote} onDelete={deleteNote} onToggleCollapse={handleToggleCollapse}
-                  onUpdateNote={updateNote} allowParentEdit />
+                <NoteCard key={item.id} note={item as Note} allNotes={notes} allTasks={tasks} now={now}
+                  onCompleteNote={completeNote} onCompleteTask={completeTask}
+                  onDeleteNote={deleteNote} onDeleteTask={deleteTask}
+                  onToggleCollapse={handleToggleCollapse}
+                  onUpdateNote={updateNote} onUpdateTask={updateTask}
+                  addNote={addNote} addTask={addTask}
+                  allowParentEdit />
               );
             }
             return (
-              <TaskCard key={item.id} task={item as Task} now={now}
-                onUpdate={updateTask} onComplete={completeTask} onDelete={deleteTask} />
+              <TaskCard key={item.id} task={item as Task} allNotes={notes} allTasks={tasks} now={now}
+                onUpdate={updateTask} onUpdateNote={updateNote}
+                onCompleteNote={completeNote} onCompleteTask={completeTask}
+                onDeleteNote={deleteNote} onDeleteTask={deleteTask}
+                onToggleCollapse={handleToggleCollapse}
+                addNote={addNote} addTask={addTask}
+                allowParentEdit />
             );
           })}
         </div>
@@ -232,17 +256,26 @@ export function PoolPage({
               return (
                 <div key={item.id} style={{ position: 'absolute', left: base.x + offset.x, top: base.y + offset.y, width: 280 }}
                   onMouseDown={handleCanvasMouseDown(item.id, idx)} className="canvas-card">
-                  <NoteCard note={item as Note} allNotes={notes} now={now}
-                    onComplete={completeNote} onDelete={deleteNote} onToggleCollapse={handleToggleCollapse}
-                    onUpdateNote={updateNote} allowParentEdit />
+                  <NoteCard note={item as Note} allNotes={notes} allTasks={tasks} now={now}
+                    onCompleteNote={completeNote} onCompleteTask={completeTask}
+                    onDeleteNote={deleteNote} onDeleteTask={deleteTask}
+                    onToggleCollapse={handleToggleCollapse}
+                    onUpdateNote={updateNote} onUpdateTask={updateTask}
+                    addNote={addNote} addTask={addTask}
+                    allowParentEdit />
                 </div>
               );
             }
             return (
               <div key={item.id} style={{ position: 'absolute', left: base.x + offset.x, top: base.y + offset.y, width: 280 }}
                 onMouseDown={handleCanvasMouseDown(item.id, idx)} className="canvas-card">
-                <TaskCard task={item as Task} now={now}
-                  onUpdate={updateTask} onComplete={completeTask} onDelete={deleteTask} />
+                <TaskCard task={item as Task} allNotes={notes} allTasks={tasks} now={now}
+                  onUpdate={updateTask} onUpdateNote={updateNote}
+                  onCompleteNote={completeNote} onCompleteTask={completeTask}
+                  onDeleteNote={deleteNote} onDeleteTask={deleteTask}
+                  onToggleCollapse={handleToggleCollapse}
+                  addNote={addNote} addTask={addTask}
+                  allowParentEdit />
               </div>
             );
           })}

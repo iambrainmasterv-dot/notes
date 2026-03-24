@@ -11,7 +11,7 @@ import { SortControls } from '../components/SortControls';
 import { DeadlineBadge } from '../components/DeadlineBadge';
 import { ProgressBar } from '../components/ProgressBar';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { isExpired, itemOriginRowClass, noteShownAsRootInFiltered } from '../utils';
+import { isExpired, itemOriginRowClass, itemShownAsRootInFiltered, buildParentPickerOptions, parseParentPickerValue } from '../utils';
 import { useTick } from '../hooks/useTick';
 
 const WEEKDAY_LABELS: { value: Weekday; label: string }[] = [
@@ -81,6 +81,8 @@ export function SchedulePage({
   const [tDesc, setTDesc] = useState('');
   const [tTarget, setTTarget] = useState(10);
   const [tDeadline, setTDeadline] = useState<string | undefined>();
+  const [nParentVal, setNParentVal] = useState('');
+  const [tParentVal, setTParentVal] = useState('');
 
   // Schedule template builder (big modal)
   const [builderOpen, setBuilderOpen] = useState(false);
@@ -112,6 +114,12 @@ export function SchedulePage({
   // Old-style daily items (the `daily` flag on notes/tasks)
   const dailyNotes = useMemo(() => notes.filter((n) => n.daily), [notes]);
   const dailyTasks = useMemo(() => tasks.filter((t) => t.daily), [tasks]);
+  const dailyNotesActive = useMemo(() => dailyNotes.filter((n) => !n.completed), [dailyNotes]);
+  const dailyTasksActive = useMemo(() => dailyTasks.filter((t) => !t.completed), [dailyTasks]);
+  const dailyParentOpts = useMemo(
+    () => buildParentPickerOptions(dailyNotesActive, dailyTasksActive, { dailyOnly: true }),
+    [dailyNotesActive, dailyTasksActive],
+  );
   const allDailyItems: Item[] = useMemo(
     () => [...dailyNotes, ...dailyTasks],
     [dailyNotes, dailyTasks],
@@ -150,9 +158,7 @@ export function SchedulePage({
 
   const visibleFiltered = useMemo(() => {
     const ids = new Set(filtered.map((i) => i.id));
-    return filtered.filter(
-      (item) => item.type !== 'note' || noteShownAsRootInFiltered(item as Note, ids),
-    );
+    return filtered.filter((item) => itemShownAsRootInFiltered(item, ids));
   }, [filtered]);
 
   const handleToggleCollapse = (id: string) => {
@@ -160,19 +166,36 @@ export function SchedulePage({
     if (note) updateNote(id, { collapsed: !note.collapsed });
   };
 
-  const resetNoteForm = () => { setNTitle(''); setNDesc(''); setNDeadline(undefined); };
-  const resetTaskForm = () => { setTTitle(''); setTDesc(''); setTTarget(10); setTDeadline(undefined); };
+  const resetNoteForm = () => { setNTitle(''); setNDesc(''); setNDeadline(undefined); setNParentVal(''); };
+  const resetTaskForm = () => { setTTitle(''); setTDesc(''); setTTarget(10); setTDeadline(undefined); setTParentVal(''); };
 
   const handleAddNote = () => {
     if (!nTitle.trim()) return;
-    addNote({ title: nTitle.trim(), description: nDesc.trim(), deadline: nDeadline, daily: true });
+    const parsed = nParentVal ? parseParentPickerValue(nParentVal) : null;
+    addNote({
+      title: nTitle.trim(),
+      description: nDesc.trim(),
+      deadline: nDeadline,
+      daily: true,
+      parentId: parsed?.id,
+      parentType: parsed?.type,
+    });
     resetNoteForm();
     setNoteModalOpen(false);
   };
 
   const handleAddTask = () => {
     if (!tTitle.trim() || tTarget < 1) return;
-    addTask({ title: tTitle.trim(), description: tDesc.trim(), target: tTarget, deadline: tDeadline, daily: true });
+    const parsed = tParentVal ? parseParentPickerValue(tParentVal) : null;
+    addTask({
+      title: tTitle.trim(),
+      description: tDesc.trim(),
+      target: tTarget,
+      deadline: tDeadline,
+      daily: true,
+      parentId: parsed?.id,
+      parentType: parsed?.type,
+    });
     resetTaskForm();
     setTaskModalOpen(false);
   };
@@ -402,14 +425,23 @@ export function SchedulePage({
           {visibleFiltered.map((item) => {
             if (item.type === 'note') {
               return (
-                <NoteCard key={item.id} note={item as Note} allNotes={notes} now={now}
-                  onComplete={completeNote} onDelete={deleteNote} onToggleCollapse={handleToggleCollapse}
-                  onUpdateNote={updateNote} allowParentEdit />
+                <NoteCard key={item.id} note={item as Note} allNotes={notes} allTasks={tasks} now={now}
+                  onCompleteNote={completeNote} onCompleteTask={completeTask}
+                  onDeleteNote={deleteNote} onDeleteTask={deleteTask}
+                  onToggleCollapse={handleToggleCollapse}
+                  onUpdateNote={updateNote} onUpdateTask={updateTask}
+                  addNote={addNote} addTask={addTask}
+                  allowParentEdit />
               );
             }
             return (
-              <TaskCard key={item.id} task={item as Task} now={now}
-                onUpdate={updateTask} onComplete={completeTask} onDelete={deleteTask} />
+              <TaskCard key={item.id} task={item as Task} allNotes={notes} allTasks={tasks} now={now}
+                onUpdate={updateTask} onUpdateNote={updateNote}
+                onCompleteNote={completeNote} onCompleteTask={completeTask}
+                onDeleteNote={deleteNote} onDeleteTask={deleteTask}
+                onToggleCollapse={handleToggleCollapse}
+                addNote={addNote} addTask={addTask}
+                allowParentEdit />
             );
           })}
         </div>
@@ -465,17 +497,26 @@ export function SchedulePage({
               return (
                 <div key={item.id} style={{ position: 'absolute', left: base.x + offset.x, top: base.y + offset.y, width: 280 }}
                   onMouseDown={handleCanvasMouseDown(item.id, idx)} className="canvas-card">
-                  <NoteCard note={item as Note} allNotes={notes} now={now}
-                    onComplete={completeNote} onDelete={deleteNote} onToggleCollapse={handleToggleCollapse}
-                    onUpdateNote={updateNote} allowParentEdit />
+                  <NoteCard note={item as Note} allNotes={notes} allTasks={tasks} now={now}
+                    onCompleteNote={completeNote} onCompleteTask={completeTask}
+                    onDeleteNote={deleteNote} onDeleteTask={deleteTask}
+                    onToggleCollapse={handleToggleCollapse}
+                    onUpdateNote={updateNote} onUpdateTask={updateTask}
+                    addNote={addNote} addTask={addTask}
+                    allowParentEdit />
                 </div>
               );
             }
             return (
               <div key={item.id} style={{ position: 'absolute', left: base.x + offset.x, top: base.y + offset.y, width: 280 }}
                 onMouseDown={handleCanvasMouseDown(item.id, idx)} className="canvas-card">
-                <TaskCard task={item as Task} now={now}
-                  onUpdate={updateTask} onComplete={completeTask} onDelete={deleteTask} />
+                <TaskCard task={item as Task} allNotes={notes} allTasks={tasks} now={now}
+                  onUpdate={updateTask} onUpdateNote={updateNote}
+                  onCompleteNote={completeNote} onCompleteTask={completeTask}
+                  onDeleteNote={deleteNote} onDeleteTask={deleteTask}
+                  onToggleCollapse={handleToggleCollapse}
+                  addNote={addNote} addTask={addTask}
+                  allowParentEdit />
               </div>
             );
           })}
@@ -591,6 +632,15 @@ export function SchedulePage({
           <textarea className="input textarea" value={nDesc} onChange={(e) => setNDesc(e.target.value)} rows={3} placeholder="Optional details..." />
         </div>
         <DeadlinePicker value={nDeadline} onChange={setNDeadline} timeOnly />
+        <div className="form-group">
+          <label>Parent (daily items only)</label>
+          <select className="input select" value={nParentVal} onChange={(e) => setNParentVal(e.target.value)}>
+            <option value="">None (top-level)</option>
+            {dailyParentOpts.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
         <button className="btn btn-primary btn-full" onClick={handleAddNote}>Create Daily Note</button>
       </Modal>
 
@@ -609,6 +659,15 @@ export function SchedulePage({
           <input className="input" type="number" min={1} value={tTarget} onChange={(e) => setTTarget(Number(e.target.value))} />
         </div>
         <DeadlinePicker value={tDeadline} onChange={setTDeadline} timeOnly />
+        <div className="form-group">
+          <label>Parent (daily items only)</label>
+          <select className="input select" value={tParentVal} onChange={(e) => setTParentVal(e.target.value)}>
+            <option value="">None (top-level)</option>
+            {dailyParentOpts.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
         <button className="btn btn-primary btn-full" onClick={handleAddTask}>Create Daily Task</button>
       </Modal>
 

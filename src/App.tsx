@@ -22,9 +22,14 @@ import { ThemePanel } from './components/ThemePanel';
 import { NotificationBell } from './components/NotificationBell';
 import { Toasts } from './components/Toasts';
 import { GreetingScreen } from './components/GreetingScreen';
+import { useTutorial } from './hooks/useTutorial';
+import { TutorialOverlay } from './components/TutorialOverlay';
 import { APP_VERSION } from './version';
+import { api } from './api/client';
 import {
   appCalendarDate,
+  collectDescendantIds,
+  completedLastEmptyStorageKey,
   countActiveExpiredItems,
   formatLongDate,
   greetingDismissedSessionKey,
@@ -81,8 +86,8 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
   const [page, setPage] = useState<Page>('pool');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
-  const { notes, addNote, updateNote, deleteNote, completeNote, recoverNote, setNotes } = useNotes();
-  const { tasks, addTask, updateTask, deleteTask, completeTask, recoverTask, setTasks } = useTasks();
+  const { notes, addNote, updateNote, recoverNote, setNotes } = useNotes();
+  const { tasks, addTask, updateTask, recoverTask, setTasks } = useTasks();
   const { settings, update: updateTheme, lastResetTag, saveResetTag } = useUserSettings();
   useThemeApply(settings);
   const { presets, addPreset, updatePreset, deletePreset } = usePresets();
@@ -94,6 +99,7 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
 
   const { hasLocalData, importLocalData } = useLocalImport();
   const [localImportAvailable, setLocalImportAvailable] = useState(false);
+  const userId = user?.id ?? '';
 
   const refreshLocalFlag = useCallback(() => {
     setLocalImportAvailable(hasLocalData());
@@ -124,6 +130,40 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
   }, [activeForTick]);
   const now = useTick(nearestDeadline);
 
+  const completedCount = useMemo(
+    () => notes.filter((n) => n.completed).length + tasks.filter((t) => t.completed).length,
+    [notes, tasks],
+  );
+
+  const [lastCompletedEmptyAtMs, setLastCompletedEmptyAtMs] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!userId) return;
+    const k = completedLastEmptyStorageKey(userId);
+    if (completedCount === 0) {
+      const t = Date.now();
+      localStorage.setItem(k, String(t));
+      setLastCompletedEmptyAtMs(t);
+      return;
+    }
+    const raw = localStorage.getItem(k);
+    if (raw && !Number.isNaN(Number(raw))) {
+      setLastCompletedEmptyAtMs(Number(raw));
+    } else {
+      const t = Date.now();
+      localStorage.setItem(k, String(t));
+      setLastCompletedEmptyAtMs(t);
+    }
+  }, [completedCount, userId]);
+
+  const staleCompletedParams = useMemo(
+    () =>
+      userId
+        ? { userId, completedCount, lastCompletedEmptyAtMs }
+        : null,
+    [userId, completedCount, lastCompletedEmptyAtMs],
+  );
+
   const {
     notifications,
     unreadCount,
@@ -131,12 +171,7 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
     dismissToast,
     markRead,
     markAllRead,
-  } = useNotifications(notes, tasks, now);
-
-  const completedCount = useMemo(
-    () => notes.filter((n) => n.completed).length + tasks.filter((t) => t.completed).length,
-    [notes, tasks],
-  );
+  } = useNotifications(notes, tasks, now, staleCompletedParams);
 
   const activeCount = useMemo(
     () => notes.filter((n) => !n.completed).length + tasks.filter((t) => !t.completed).length,
@@ -148,7 +183,6 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
     [notes, tasks],
   );
 
-  const userId = user?.id ?? '';
   const [greetingOpen, setGreetingOpen] = useState(false);
 
   useEffect(() => {
@@ -188,6 +222,69 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
     [scheduleTemplates, settings.dailyResetTime],
   );
 
+  const deleteNoteCascade = useCallback(
+    (id: string) => {
+      const { noteIds, taskIds } = collectDescendantIds('note', id, notes, tasks);
+      const nDel = new Set([id, ...noteIds]);
+      const tDel = new Set(taskIds);
+      setNotes((prev) => prev.filter((n) => !nDel.has(n.id)));
+      setTasks((prev) => prev.filter((t) => !tDel.has(t.id)));
+      if (nDel.size === 1) {
+        nDel.forEach((nid) => api.deleteNote(nid).catch(() => {}));
+      } else {
+        api.deleteNotes([...nDel]).catch(() => {});
+      }
+      tDel.forEach((tid) => api.deleteTask(tid).catch(() => {}));
+    },
+    [notes, tasks, setNotes, setTasks],
+  );
+
+  const deleteTaskCascade = useCallback(
+    (id: string) => {
+      const { noteIds, taskIds } = collectDescendantIds('task', id, notes, tasks);
+      const nDel = new Set(noteIds);
+      const tDel = new Set([id, ...taskIds]);
+      setNotes((prev) => prev.filter((n) => !nDel.has(n.id)));
+      setTasks((prev) => prev.filter((t) => !tDel.has(t.id)));
+      if (nDel.size > 0) {
+        api.deleteNotes([...nDel]).catch(() => {});
+      }
+      tDel.forEach((tid) => api.deleteTask(tid).catch(() => {}));
+    },
+    [notes, tasks, setNotes, setTasks],
+  );
+
+  const completeNoteCascade = useCallback(
+    (id: string) => {
+      const { noteIds, taskIds } = collectDescendantIds('note', id, notes, tasks);
+      const nIds = new Set([id, ...noteIds]);
+      const tIds = new Set(taskIds);
+      setNotes((prev) => prev.map((n) => (nIds.has(n.id) ? { ...n, completed: true } : n)));
+      setTasks((prev) => prev.map((t) => (tIds.has(t.id) ? { ...t, completed: true } : t)));
+      nIds.forEach((nid) => api.updateNote(nid, { completed: true }).catch(() => {}));
+      tIds.forEach((tid) => api.updateTask(tid, { completed: true }).catch(() => {}));
+    },
+    [notes, tasks, setNotes, setTasks],
+  );
+
+  const completeTaskCascade = useCallback(
+    (id: string) => {
+      const { noteIds, taskIds } = collectDescendantIds('task', id, notes, tasks);
+      const nIds = new Set(noteIds);
+      const tIds = new Set([id, ...taskIds]);
+      setNotes((prev) => prev.map((n) => (nIds.has(n.id) ? { ...n, completed: true } : n)));
+      setTasks((prev) => prev.map((t) => (tIds.has(t.id) ? { ...t, completed: true } : t)));
+      nIds.forEach((nid) => api.updateNote(nid, { completed: true }).catch(() => {}));
+      tIds.forEach((tid) => api.updateTask(tid, { completed: true }).catch(() => {}));
+    },
+    [notes, tasks, setNotes, setTasks],
+  );
+
+  const [openCreateNoteNonce, setOpenCreateNoteNonce] = useState(0);
+  const [openCreateTaskNonce, setOpenCreateTaskNonce] = useState(0);
+
+  const tutorial = useTutorial(userId, setPage, setSettingsOpen);
+
   const handleGreetingDismiss = useCallback(() => {
     if (userId && typeof localStorage !== 'undefined') {
       localStorage.setItem(lastVisitStorageKey(userId), String(Date.now()));
@@ -210,6 +307,17 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
       />
 
       <Toasts toasts={toasts} onDismiss={dismissToast} />
+
+      <TutorialOverlay
+        open={tutorial.active}
+        step={tutorial.step}
+        stepIndex={tutorial.stepIndex}
+        total={tutorial.total}
+        onNext={tutorial.next}
+        onSkipTab={tutorial.skipToNextTab}
+        onFinish={tutorial.finish}
+        isLast={tutorial.isLast}
+      />
 
       <nav className="sidebar">
         <div className="sidebar-brand">
@@ -267,6 +375,7 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
               onUpdate={updateTheme}
               localImportAvailable={localImportAvailable}
               onImportLocal={handleImportLocal}
+              onRerunTutorial={tutorial.rerun}
             />
           )}
 
@@ -284,17 +393,21 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
       <main className="main-content" onClick={() => setNotifOpen(false)}>
         {page === 'pool' && (
           <PoolPage notes={notes} tasks={tasks}
+            addNote={addNote} addTask={addTask}
             updateNote={updateNote} updateTask={updateTask}
-            deleteNote={deleteNote} deleteTask={deleteTask}
-            completeNote={completeNote} completeTask={completeTask} />
+            deleteNote={deleteNoteCascade} deleteTask={deleteTaskCascade}
+            completeNote={completeNoteCascade} completeTask={completeTaskCascade}
+            onPoolQuickCreateNote={() => { setPage('notes'); setOpenCreateNoteNonce((n) => n + 1); }}
+            onPoolQuickCreateTask={() => { setPage('tasks'); setOpenCreateTaskNonce((n) => n + 1); }}
+          />
         )}
         {page === 'schedule' && (
           <SchedulePage
             notes={notes} tasks={tasks}
             addNote={addNote} addTask={addTask}
             updateNote={updateNote} updateTask={updateTask}
-            deleteNote={deleteNote} deleteTask={deleteTask}
-            completeNote={completeNote} completeTask={completeTask}
+            deleteNote={deleteNoteCascade} deleteTask={deleteTaskCascade}
+            completeNote={completeNoteCascade} completeTask={completeTaskCascade}
             setNotes={setNotes} setTasks={setTasks}
             presets={presets} addPreset={addPreset}
             updatePreset={updatePreset} deletePreset={deletePreset}
@@ -304,14 +417,38 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
           />
         )}
         {page === 'notes' && (
-          <NotesPage notes={notes} addNote={addNote} updateNote={updateNote} deleteNote={deleteNote} completeNote={completeNote} />
+          <NotesPage
+            notes={notes}
+            tasks={tasks}
+            openCreateNonce={openCreateNoteNonce}
+            addNote={addNote}
+            addTask={addTask}
+            updateNote={updateNote}
+            updateTask={updateTask}
+            deleteNote={deleteNoteCascade}
+            deleteTask={deleteTaskCascade}
+            completeNote={completeNoteCascade}
+            completeTask={completeTaskCascade}
+          />
         )}
         {page === 'tasks' && (
-          <TasksPage tasks={tasks} addTask={addTask} updateTask={updateTask} deleteTask={deleteTask} completeTask={completeTask} />
+          <TasksPage
+            notes={notes}
+            tasks={tasks}
+            openCreateNonce={openCreateTaskNonce}
+            addNote={addNote}
+            addTask={addTask}
+            updateNote={updateNote}
+            updateTask={updateTask}
+            deleteNote={deleteNoteCascade}
+            deleteTask={deleteTaskCascade}
+            completeNote={completeNoteCascade}
+            completeTask={completeTaskCascade}
+          />
         )}
         {page === 'completed' && (
           <CompletedPage notes={notes} tasks={tasks} recoverNote={recoverNote} recoverTask={recoverTask}
-            deleteNote={deleteNote} deleteTask={deleteTask} setNotes={setNotes} setTasks={setTasks} />
+            deleteNote={deleteNoteCascade} deleteTask={deleteTaskCascade} setNotes={setNotes} setTasks={setTasks} />
         )}
       </main>
     </div>

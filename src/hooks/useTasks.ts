@@ -13,6 +13,8 @@ function toApi(t: Task) {
     completed: t.completed,
     created_at: t.createdAt,
     deadline: t.deadline ?? null,
+    parent_id: t.parentId ?? null,
+    parent_type: t.parentType ?? null,
     target: t.target,
     progress: t.progress,
     daily: t.daily ?? false,
@@ -30,6 +32,8 @@ function fromApi(row: Record<string, unknown>): Task {
     completed: row.completed as boolean,
     createdAt: row.created_at as string,
     deadline: (row.deadline as string) || undefined,
+    parentId: (row.parent_id as string) || undefined,
+    parentType: (row.parent_type as Task['parentType']) || undefined,
     target: row.target as number,
     progress: row.progress as number,
     daily: row.daily as boolean,
@@ -82,6 +86,8 @@ export function useTasks() {
     if (patch.target !== undefined) dbPatch.target = patch.target;
     if (patch.progress !== undefined) dbPatch.progress = patch.progress;
     if (patch.daily !== undefined) dbPatch.daily = patch.daily;
+    if (patch.parentId !== undefined) dbPatch.parent_id = patch.parentId ?? null;
+    if (patch.parentType !== undefined) dbPatch.parent_type = patch.parentType ?? null;
     if (Object.keys(dbPatch).length) api.updateTask(id, dbPatch).catch(() => {});
   }, []);
 

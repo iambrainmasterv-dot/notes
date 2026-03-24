@@ -1,25 +1,43 @@
-import { useState, useMemo, useRef, useCallback } from 'react';
-import type { Note, ViewMode, SortField, SortDir } from '../types';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import type { Note, Task, ViewMode, SortField, SortDir } from '../types';
 import { NoteCard } from '../components/NoteCard';
 import { Modal } from '../components/Modal';
 import { DeadlinePicker } from '../components/DeadlinePicker';
 import { SearchBar } from '../components/SearchBar';
 import { SortControls } from '../components/SortControls';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { isExpired, itemOriginRowClass } from '../utils';
+import { isExpired, itemOriginRowClass, buildParentPickerOptions, parseParentPickerValue, effectiveNoteParentType } from '../utils';
 import { useTick } from '../hooks/useTick';
 import { DeadlineBadge } from '../components/DeadlineBadge';
 import { ItemOriginBadges } from '../components/ItemOriginBadges';
 
 interface Props {
   notes: Note[];
+  tasks: Task[];
+  openCreateNonce?: number;
   addNote: (data: Omit<Note, 'id' | 'type' | 'completed' | 'createdAt'>) => void;
   updateNote: (id: string, patch: Partial<Note>) => void;
+  updateTask: (id: string, patch: Partial<Task>) => void;
   deleteNote: (id: string) => void;
+  deleteTask: (id: string) => void;
+  addTask: (data: Omit<Task, 'id' | 'type' | 'completed' | 'createdAt' | 'progress'>) => void;
   completeNote: (id: string) => void;
+  completeTask: (id: string) => void;
 }
 
-export function NotesPage({ notes, addNote, updateNote, deleteNote, completeNote }: Props) {
+export function NotesPage({
+  notes,
+  tasks,
+  openCreateNonce = 0,
+  addNote,
+  updateNote,
+  updateTask,
+  deleteNote,
+  deleteTask,
+  addTask,
+  completeNote,
+  completeTask,
+}: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState<SortField>('createdAt');
@@ -29,11 +47,21 @@ export function NotesPage({ notes, addNote, updateNote, deleteNote, completeNote
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [deadline, setDeadline] = useState<string | undefined>();
-  const [parentId, setParentId] = useState<string | undefined>();
+  const [parentVal, setParentVal] = useState('');
 
   const [tableDeleteId, setTableDeleteId] = useState<string | null>(null);
 
   const activeNotes = useMemo(() => notes.filter((n) => !n.completed), [notes]);
+  const activeTasks = useMemo(() => tasks.filter((t) => !t.completed), [tasks]);
+
+  const newNoteParentOpts = useMemo(
+    () => buildParentPickerOptions(activeNotes, activeTasks, {}),
+    [activeNotes, activeTasks],
+  );
+
+  useEffect(() => {
+    if (openCreateNonce > 0) setModalOpen(true);
+  }, [openCreateNonce]);
 
   const nearestDeadline = useMemo(() => {
     const upcoming = activeNotes.filter((n) => n.deadline).map((n) => n.deadline!).sort();
@@ -61,7 +89,16 @@ export function NotesPage({ notes, addNote, updateNote, deleteNote, completeNote
     });
   }, [activeNotes, search, sortField, sortDir]);
 
-  const topLevel = useMemo(() => filtered.filter((n) => !n.parentId), [filtered]);
+  const topLevel = useMemo(
+    () =>
+      filtered.filter((n) => {
+        if (!n.parentId) return true;
+        const pt = effectiveNoteParentType(n);
+        if (pt === 'note') return !filtered.some((fn) => fn.id === n.parentId);
+        return true;
+      }),
+    [filtered],
+  );
 
   const handleToggleCollapse = useCallback(
     (id: string) => {
@@ -72,12 +109,19 @@ export function NotesPage({ notes, addNote, updateNote, deleteNote, completeNote
   );
 
   const resetForm = () => {
-    setTitle(''); setDescription(''); setDeadline(undefined); setParentId(undefined);
+    setTitle(''); setDescription(''); setDeadline(undefined); setParentVal('');
   };
 
   const handleSubmit = () => {
     if (!title.trim()) return;
-    addNote({ title: title.trim(), description: description.trim(), deadline, parentId });
+    const parsed = parentVal ? parseParentPickerValue(parentVal) : null;
+    addNote({
+      title: title.trim(),
+      description: description.trim(),
+      deadline,
+      parentId: parsed?.id,
+      parentType: parsed?.type,
+    });
     resetForm();
     setModalOpen(false);
   };
@@ -148,9 +192,13 @@ export function NotesPage({ notes, addNote, updateNote, deleteNote, completeNote
         <div className="card-grid">
           {topLevel.length === 0 && <p className="empty-state">No notes yet. Create one!</p>}
           {topLevel.map((note) => (
-<NoteCard key={note.id} note={note} allNotes={notes} now={now}
-                  onComplete={completeNote} onDelete={deleteNote} onToggleCollapse={handleToggleCollapse}
-                  onUpdateNote={updateNote} allowParentEdit />
+<NoteCard key={note.id} note={note} allNotes={notes} allTasks={tasks} now={now}
+                  onCompleteNote={completeNote} onCompleteTask={completeTask}
+                  onDeleteNote={deleteNote} onDeleteTask={deleteTask}
+                  onToggleCollapse={handleToggleCollapse}
+                  onUpdateNote={updateNote} onUpdateTask={updateTask}
+                  addNote={addNote} addTask={addTask}
+                  allowParentEdit />
           ))}
         </div>
       )}
@@ -196,9 +244,13 @@ export function NotesPage({ notes, addNote, updateNote, deleteNote, completeNote
           {topLevel.map((note) => {
             const pos = note.position ?? { x: 0, y: 0 };
             return (
-<NoteCard key={note.id} note={note} allNotes={notes} now={now}
-                  onComplete={completeNote} onDelete={deleteNote} onToggleCollapse={handleToggleCollapse}
-                  onUpdateNote={updateNote} allowParentEdit
+<NoteCard key={note.id} note={note} allNotes={notes} allTasks={tasks} now={now}
+                  onCompleteNote={completeNote} onCompleteTask={completeTask}
+                  onDeleteNote={deleteNote} onDeleteTask={deleteTask}
+                  onToggleCollapse={handleToggleCollapse}
+                  onUpdateNote={updateNote} onUpdateTask={updateTask}
+                  addNote={addNote} addTask={addTask}
+                  allowParentEdit
                 onMouseDown={handleCanvasMouseDown(note)} className="canvas-card"
                 style={{ position: 'absolute', left: pos.x, top: pos.y, cursor: 'grab' }} />
             );
@@ -225,10 +277,12 @@ export function NotesPage({ notes, addNote, updateNote, deleteNote, completeNote
         </div>
         <DeadlinePicker value={deadline} onChange={setDeadline} />
         <div className="form-group">
-          <label>Parent Note</label>
-          <select className="input select" value={parentId ?? ''} onChange={(e) => setParentId(e.target.value || undefined)}>
+          <label>Parent</label>
+          <select className="input select" value={parentVal} onChange={(e) => setParentVal(e.target.value)}>
             <option value="">None (top-level)</option>
-            {activeNotes.map((n) => <option key={n.id} value={n.id}>{n.title}</option>)}
+            {newNoteParentOpts.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
           </select>
         </div>
         <button className="btn btn-primary btn-full" onClick={handleSubmit}>Create Note</button>

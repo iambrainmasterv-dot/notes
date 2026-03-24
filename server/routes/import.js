@@ -9,10 +9,10 @@ router.post('/', async (req, res) => {
   if (Array.isArray(notes)) {
     for (const n of notes) {
       await pool.query(
-        `INSERT INTO notes (id, user_id, title, description, completed, created_at, deadline, parent_id, position_x, position_y, collapsed, daily)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        `INSERT INTO notes (id, user_id, title, description, completed, created_at, deadline, parent_id, parent_type, position_x, position_y, collapsed, daily)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
          ON CONFLICT (id) DO NOTHING`,
-        [n.id, req.userId, n.title, n.description, n.completed, n.created_at, n.deadline, n.parent_id, n.position_x, n.position_y, n.collapsed, n.daily],
+        [n.id, req.userId, n.title, n.description, n.completed, n.created_at, n.deadline, n.parent_id, n.parent_type ?? null, n.position_x, n.position_y, n.collapsed, n.daily],
       );
     }
   }
@@ -20,10 +20,10 @@ router.post('/', async (req, res) => {
   if (Array.isArray(tasks)) {
     for (const t of tasks) {
       await pool.query(
-        `INSERT INTO tasks (id, user_id, title, description, completed, created_at, deadline, target, progress, daily)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        `INSERT INTO tasks (id, user_id, title, description, completed, created_at, deadline, target, progress, daily, parent_id, parent_type)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
          ON CONFLICT (id) DO NOTHING`,
-        [t.id, req.userId, t.title, t.description, t.completed, t.created_at, t.deadline, t.target, t.progress, t.daily],
+        [t.id, req.userId, t.title, t.description, t.completed, t.created_at, t.deadline, t.target, t.progress, t.daily, t.parent_id ?? null, t.parent_type ?? null],
       );
     }
   }

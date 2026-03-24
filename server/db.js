@@ -130,6 +130,9 @@ export async function initDb() {
     'ALTER TABLE notes ADD COLUMN IF NOT EXISTS source_occurrence_date DATE',
     'ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source_schedule_template_id UUID',
     'ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source_occurrence_date DATE',
+    'ALTER TABLE notes ADD COLUMN IF NOT EXISTS parent_type TEXT',
+    'ALTER TABLE tasks ADD COLUMN IF NOT EXISTS parent_id UUID',
+    'ALTER TABLE tasks ADD COLUMN IF NOT EXISTS parent_type TEXT',
   ];
   for (const sql of alterCols) {
     await pool.query(sql).catch(() => {});

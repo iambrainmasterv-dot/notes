@@ -7,6 +7,7 @@ interface Props {
   /** True when this device still has notes/tasks in local storage (pre-account). */
   localImportAvailable: boolean;
   onImportLocal: () => void | Promise<void>;
+  onRerunTutorial?: () => void;
 }
 
 const modes: { value: ThemeMode; label: string; icon: string }[] = [
@@ -44,7 +45,7 @@ const fontScales: { value: FontScale; label: string }[] = [
   { value: 'large', label: 'Large' },
 ];
 
-export function ThemePanel({ settings, onUpdate, localImportAvailable, onImportLocal }: Props) {
+export function ThemePanel({ settings, onUpdate, localImportAvailable, onImportLocal, onRerunTutorial }: Props) {
   return (
     <div className="theme-panel">
       <div className="theme-section">
@@ -138,6 +139,16 @@ export function ThemePanel({ settings, onUpdate, localImportAvailable, onImportL
           style={{ width: 'auto' }}
         />
       </div>
+
+      {onRerunTutorial && (
+        <div className="theme-section">
+          <span className="theme-label">Guided tour</span>
+          <p className="theme-help">Walk through each tab and settings again.</p>
+          <button type="button" className="btn btn-full" onClick={() => onRerunTutorial()}>
+            Re-run tutorial
+          </button>
+        </div>
+      )}
 
       <div className="theme-section">
         <span className="theme-label">About</span>

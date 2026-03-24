@@ -15,6 +15,7 @@ function toApi(n: Note) {
     created_at: n.createdAt,
     deadline: n.deadline ?? null,
     parent_id: n.parentId ?? null,
+    parent_type: n.parentType ?? null,
     position_x: n.position?.x ?? null,
     position_y: n.position?.y ?? null,
     collapsed: n.collapsed ?? false,
@@ -34,6 +35,7 @@ function fromApi(row: Record<string, unknown>): Note {
     createdAt: row.created_at as string,
     deadline: (row.deadline as string) || undefined,
     parentId: (row.parent_id as string) || undefined,
+    parentType: (row.parent_type as Note['parentType']) || undefined,
     position: row.position_x != null ? { x: row.position_x as number, y: row.position_y as number } : undefined,
     collapsed: row.collapsed as boolean,
     daily: row.daily as boolean,
@@ -83,25 +85,17 @@ export function useNotes() {
     if (patch.completed !== undefined) dbPatch.completed = patch.completed;
     if (patch.deadline !== undefined) dbPatch.deadline = patch.deadline ?? null;
     if (patch.parentId !== undefined) dbPatch.parent_id = patch.parentId ?? null;
+    if (patch.parentType !== undefined) dbPatch.parent_type = patch.parentType ?? null;
     if (patch.position !== undefined) { dbPatch.position_x = patch.position?.x ?? null; dbPatch.position_y = patch.position?.y ?? null; }
     if (patch.collapsed !== undefined) dbPatch.collapsed = patch.collapsed;
     if (patch.daily !== undefined) dbPatch.daily = patch.daily;
     if (Object.keys(dbPatch).length) api.updateNote(id, dbPatch).catch(() => {});
   }, []);
 
+  /** Deletes a single note row (no cascade). Prefer app-level cascade delete for UX. */
   const deleteNote = useCallback((id: string) => {
-    setNotes((prev) => {
-      const toDelete = new Set<string>();
-      const collect = (targetId: string) => {
-        toDelete.add(targetId);
-        prev.filter((n) => n.parentId === targetId).forEach((child) => collect(child.id));
-      };
-      collect(id);
-      const ids = Array.from(toDelete);
-      if (ids.length === 1) api.deleteNote(ids[0]).catch(() => {});
-      else api.deleteNotes(ids).catch(() => {});
-      return prev.filter((n) => !toDelete.has(n.id));
-    });
+    setNotes((prev) => prev.filter((n) => n.id !== id));
+    api.deleteNote(id).catch(() => {});
   }, []);
 
   const completeNote = useCallback((id: string) => {

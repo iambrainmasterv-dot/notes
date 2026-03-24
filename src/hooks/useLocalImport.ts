@@ -14,6 +14,7 @@ function noteToApi(n: Note) {
     created_at: n.createdAt,
     deadline: n.deadline ?? null,
     parent_id: n.parentId ?? null,
+    parent_type: n.parentType ?? null,
     position_x: n.position?.x ?? null,
     position_y: n.position?.y ?? null,
     collapsed: n.collapsed ?? false,
@@ -34,6 +35,8 @@ function taskToApi(t: Task) {
     target: t.target,
     progress: t.progress,
     daily: t.daily ?? false,
+    parent_id: t.parentId ?? null,
+    parent_type: t.parentType ?? null,
     source_schedule_template_id: t.sourceScheduleTemplateId ?? null,
     source_occurrence_date: t.sourceOccurrenceDate ?? null,
   };

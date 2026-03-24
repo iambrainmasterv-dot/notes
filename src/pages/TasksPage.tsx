@@ -1,5 +1,5 @@
-import { useState, useMemo, useRef } from 'react';
-import type { Task, ViewMode, SortField, SortDir } from '../types';
+import { useState, useMemo, useRef, useEffect } from 'react';
+import type { Note, Task, ViewMode, SortField, SortDir } from '../types';
 import { TaskCard } from '../components/TaskCard';
 import { Modal } from '../components/Modal';
 import { DeadlinePicker } from '../components/DeadlinePicker';
@@ -9,18 +9,36 @@ import { DeadlineBadge } from '../components/DeadlineBadge';
 import { ItemOriginBadges } from '../components/ItemOriginBadges';
 import { ProgressBar } from '../components/ProgressBar';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { isExpired, itemOriginRowClass } from '../utils';
+import { isExpired, itemOriginRowClass, buildParentPickerOptions, parseParentPickerValue, effectiveTaskParentType } from '../utils';
 import { useTick } from '../hooks/useTick';
 
 interface Props {
+  notes: Note[];
   tasks: Task[];
+  openCreateNonce?: number;
+  addNote: (data: Omit<Note, 'id' | 'type' | 'completed' | 'createdAt'>) => void;
   addTask: (data: Omit<Task, 'id' | 'type' | 'completed' | 'createdAt' | 'progress'>) => void;
+  updateNote: (id: string, patch: Partial<Note>) => void;
   updateTask: (id: string, patch: Partial<Task>) => void;
+  deleteNote: (id: string) => void;
   deleteTask: (id: string) => void;
+  completeNote: (id: string) => void;
   completeTask: (id: string) => void;
 }
 
-export function TasksPage({ tasks, addTask, updateTask, deleteTask, completeTask }: Props) {
+export function TasksPage({
+  notes,
+  tasks,
+  openCreateNonce = 0,
+  addNote,
+  addTask,
+  updateNote,
+  updateTask,
+  deleteNote,
+  deleteTask,
+  completeNote,
+  completeTask,
+}: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState<SortField>('createdAt');
@@ -31,10 +49,21 @@ export function TasksPage({ tasks, addTask, updateTask, deleteTask, completeTask
   const [description, setDescription] = useState('');
   const [target, setTarget] = useState(10);
   const [deadline, setDeadline] = useState<string | undefined>();
+  const [parentVal, setParentVal] = useState('');
 
   const [tableDeleteId, setTableDeleteId] = useState<string | null>(null);
 
   const activeTasks = useMemo(() => tasks.filter((t) => !t.completed), [tasks]);
+  const activeNotes = useMemo(() => notes.filter((n) => !n.completed), [notes]);
+
+  const newTaskParentOpts = useMemo(
+    () => buildParentPickerOptions(activeNotes, activeTasks, {}),
+    [activeNotes, activeTasks],
+  );
+
+  useEffect(() => {
+    if (openCreateNonce > 0) setModalOpen(true);
+  }, [openCreateNonce]);
 
   const nearestDeadline = useMemo(() => {
     const upcoming = activeTasks.filter((t) => t.deadline).map((t) => t.deadline!).sort();
@@ -66,15 +95,39 @@ export function TasksPage({ tasks, addTask, updateTask, deleteTask, completeTask
     });
   }, [activeTasks, search, sortField, sortDir]);
 
+  const topLevel = useMemo(
+    () =>
+      filtered.filter((t) => {
+        if (!t.parentId) return true;
+        const pt = effectiveTaskParentType(t);
+        if (pt === 'task') return !filtered.some((ft) => ft.id === t.parentId);
+        return true;
+      }),
+    [filtered],
+  );
+
   const resetForm = () => {
-    setTitle(''); setDescription(''); setTarget(10); setDeadline(undefined);
+    setTitle(''); setDescription(''); setTarget(10); setDeadline(undefined); setParentVal('');
   };
 
   const handleSubmit = () => {
     if (!title.trim() || target < 1) return;
-    addTask({ title: title.trim(), description: description.trim(), target, deadline });
+    const parsed = parentVal ? parseParentPickerValue(parentVal) : null;
+    addTask({
+      title: title.trim(),
+      description: description.trim(),
+      target,
+      deadline,
+      parentId: parsed?.id,
+      parentType: parsed?.type,
+    });
     resetForm();
     setModalOpen(false);
+  };
+
+  const handleToggleCollapse = (id: string) => {
+    const note = notes.find((n) => n.id === id);
+    if (note) updateNote(id, { collapsed: !note.collapsed });
   };
 
   /* Canvas positions — tasks don't have a position field, so derive from index */
@@ -153,10 +206,15 @@ export function TasksPage({ tasks, addTask, updateTask, deleteTask, completeTask
 
       {viewMode === 'list' && (
         <div className="card-grid">
-          {filtered.length === 0 && <p className="empty-state">No tasks yet. Create one!</p>}
-          {filtered.map((task) => (
-            <TaskCard key={task.id} task={task} now={now}
-              onUpdate={updateTask} onComplete={completeTask} onDelete={deleteTask} />
+          {topLevel.length === 0 && <p className="empty-state">No tasks yet. Create one!</p>}
+          {topLevel.map((task) => (
+            <TaskCard key={task.id} task={task} allNotes={notes} allTasks={tasks} now={now}
+              onUpdate={updateTask} onUpdateNote={updateNote}
+              onCompleteNote={completeNote} onCompleteTask={completeTask}
+              onDeleteNote={deleteNote} onDeleteTask={deleteTask}
+              onToggleCollapse={handleToggleCollapse}
+              addNote={addNote} addTask={addTask}
+              allowParentEdit />
           ))}
         </div>
       )}
@@ -195,15 +253,20 @@ export function TasksPage({ tasks, addTask, updateTask, deleteTask, completeTask
 
       {viewMode === 'canvas' && (
         <div className="canvas-view">
-          {filtered.map((task, idx) => {
+          {topLevel.map((task, idx) => {
             const base = canvasPos(idx);
             const offset = dragOffsets[task.id] ?? { x: 0, y: 0 };
             return (
               <div key={task.id} className="canvas-card"
                 onMouseDown={handleCanvasMouseDown(task, idx)}
                 style={{ position: 'absolute', left: base.x + offset.x, top: base.y + offset.y, cursor: 'grab', width: 280 }}>
-                <TaskCard task={task} now={now}
-                  onUpdate={updateTask} onComplete={completeTask} onDelete={deleteTask} />
+                <TaskCard task={task} allNotes={notes} allTasks={tasks} now={now}
+                  onUpdate={updateTask} onUpdateNote={updateNote}
+                  onCompleteNote={completeNote} onCompleteTask={completeTask}
+                  onDeleteNote={deleteNote} onDeleteTask={deleteTask}
+                  onToggleCollapse={handleToggleCollapse}
+                  addNote={addNote} addTask={addTask}
+                  allowParentEdit />
               </div>
             );
           })}
@@ -232,6 +295,15 @@ export function TasksPage({ tasks, addTask, updateTask, deleteTask, completeTask
           <input className="input" type="number" min={1} value={target} onChange={(e) => setTarget(Number(e.target.value))} />
         </div>
         <DeadlinePicker value={deadline} onChange={setDeadline} />
+        <div className="form-group">
+          <label>Parent</label>
+          <select className="input select" value={parentVal} onChange={(e) => setParentVal(e.target.value)}>
+            <option value="">None (top-level)</option>
+            {newTaskParentOpts.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
         <button className="btn btn-primary btn-full" onClick={handleSubmit}>Create Task</button>
       </Modal>
     </div>

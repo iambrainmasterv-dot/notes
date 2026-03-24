@@ -9,17 +9,17 @@ router.get('/', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const { id, title, description, completed, created_at, deadline, target, progress, daily, source_schedule_template_id, source_occurrence_date } = req.body;
+  const { id, title, description, completed, created_at, deadline, target, progress, daily, parent_id, parent_type, source_schedule_template_id, source_occurrence_date } = req.body;
   const { rows } = await pool.query(
-    `INSERT INTO tasks (id, user_id, title, description, completed, created_at, deadline, target, progress, daily, source_schedule_template_id, source_occurrence_date)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-    [id, req.userId, title, description, completed, created_at, deadline, target, progress, daily ?? false, source_schedule_template_id ?? null, source_occurrence_date ?? null],
+    `INSERT INTO tasks (id, user_id, title, description, completed, created_at, deadline, target, progress, daily, parent_id, parent_type, source_schedule_template_id, source_occurrence_date)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+    [id, req.userId, title, description, completed, created_at, deadline, target, progress, daily ?? false, parent_id ?? null, parent_type ?? null, source_schedule_template_id ?? null, source_occurrence_date ?? null],
   );
   res.json(rows[0]);
 });
 
 router.patch('/:id', async (req, res) => {
-  const allowed = ['title', 'description', 'completed', 'deadline', 'target', 'progress', 'daily'];
+  const allowed = ['title', 'description', 'completed', 'deadline', 'target', 'progress', 'daily', 'parent_id', 'parent_type'];
   const sets = [];
   const vals = [];
   let i = 1;

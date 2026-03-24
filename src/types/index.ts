@@ -1,3 +1,5 @@
+export type ParentType = 'note' | 'task';
+
 export interface Note {
   id: string;
   type: 'note';
@@ -8,6 +10,8 @@ export interface Note {
   /** Full datetime "YYYY-MM-DDTHH:mm" for regular, time-only "HH:mm" for daily */
   deadline?: string;
   parentId?: string;
+  /** Parent item type; omitted + parentId on legacy rows means parent is a note */
+  parentType?: ParentType;
   position?: { x: number; y: number };
   collapsed?: boolean;
   daily?: boolean;
@@ -24,6 +28,8 @@ export interface Task {
   completed: boolean;
   createdAt: string;
   deadline?: string;
+  parentId?: string;
+  parentType?: ParentType;
   target: number;
   progress: number;
   daily?: boolean;
