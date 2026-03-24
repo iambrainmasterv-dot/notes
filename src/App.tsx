@@ -283,7 +283,7 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
   const [openCreateNoteNonce, setOpenCreateNoteNonce] = useState(0);
   const [openCreateTaskNonce, setOpenCreateTaskNonce] = useState(0);
 
-  const tutorial = useTutorial(userId, setPage, setSettingsOpen);
+  const tutorial = useTutorial(userId, setPage, setSettingsOpen, notes.length, tasks.length);
 
   const handleGreetingDismiss = useCallback(() => {
     if (userId && typeof localStorage !== 'undefined') {
@@ -317,6 +317,10 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
         onSkipTab={tutorial.skipToNextTab}
         onFinish={tutorial.finish}
         isLast={tutorial.isLast}
+        canGoNext={tutorial.canGoNext}
+        showSkipToNextTab={tutorial.showSkipToNextTab}
+        interactive={tutorial.interactive}
+        gateHint={tutorial.gateHint}
       />
 
       <nav className="sidebar">

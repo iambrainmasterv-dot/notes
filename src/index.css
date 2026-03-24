@@ -1685,6 +1685,15 @@ body {
   pointer-events: auto;
 }
 
+/* Clicks pass through to the app except on the card (create note/task, pool buttons, etc.). */
+.tutorial-overlay--interactive {
+  pointer-events: none;
+}
+
+.tutorial-overlay--interactive .tutorial-card {
+  pointer-events: auto;
+}
+
 .tutorial-card {
   max-width: 420px;
   width: 100%;
@@ -1722,8 +1731,22 @@ body {
   gap: 10px;
 }
 
+.tutorial-actions--no-skip {
+  justify-content: flex-end;
+}
+
 .tutorial-actions-right {
   display: flex;
   gap: 8px;
   margin-left: auto;
+}
+
+.tutorial-gate-hint {
+  font-size: 0.82rem;
+  color: var(--warning-fg, #92400e);
+  background: var(--warning-bg, #fffbeb);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  line-height: 1.45;
 }
