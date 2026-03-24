@@ -16,10 +16,18 @@ function loadLocalSettings(): ThemeSettings {
         uiScale: p.uiScale ?? 'default',
         fontScale: p.fontScale ?? 'default',
         dailyResetTime: p.dailyResetTime ?? '00:00',
+        aiAgentMutationsEnabled: p.aiAgentMutationsEnabled !== false,
       };
     }
   } catch { /* ignore */ }
-  return { mode: 'system', accent: 'blue', uiScale: 'default', fontScale: 'default', dailyResetTime: '00:00' };
+  return {
+    mode: 'system',
+    accent: 'blue',
+    uiScale: 'default',
+    fontScale: 'default',
+    dailyResetTime: '00:00',
+    aiAgentMutationsEnabled: true,
+  };
 }
 
 export function useUserSettings() {
@@ -38,6 +46,7 @@ export function useUserSettings() {
           uiScale: (data.ui_scale as ThemeSettings['uiScale']) ?? 'default',
           fontScale: (data.font_scale as ThemeSettings['fontScale']) ?? 'default',
           dailyResetTime: (data.daily_reset_time as string) ?? '00:00',
+          aiAgentMutationsEnabled: data.ai_agent_mutations_enabled !== false,
         };
         setSettings(remote);
         setLastResetTag((data.last_reset_tag as string) ?? null);
@@ -53,12 +62,15 @@ export function useUserSettings() {
         const next = { ...prev, ...patch };
         localStorage.setItem(THEME_KEY, JSON.stringify(next));
 
-        const dbPatch: Record<string, string> = {};
+        const dbPatch: Record<string, unknown> = {};
         if (patch.mode !== undefined) dbPatch.theme_mode = patch.mode;
         if (patch.accent !== undefined) dbPatch.accent = patch.accent;
         if (patch.uiScale !== undefined) dbPatch.ui_scale = patch.uiScale;
         if (patch.fontScale !== undefined) dbPatch.font_scale = patch.fontScale;
         if (patch.dailyResetTime !== undefined) dbPatch.daily_reset_time = patch.dailyResetTime;
+        if (patch.aiAgentMutationsEnabled !== undefined) {
+          dbPatch.ai_agent_mutations_enabled = patch.aiAgentMutationsEnabled;
+        }
         if (Object.keys(dbPatch).length > 0) api.updateSettings(dbPatch).catch(() => {});
 
         return next;

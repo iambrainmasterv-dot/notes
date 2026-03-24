@@ -124,4 +124,26 @@ export const api = {
   // Import
   importData: (data: Record<string, unknown>) =>
     request<{ ok: boolean }>('/import', { method: 'POST', body: JSON.stringify(data) }),
+
+  // AI Assistant
+  aiChat: (body: {
+    messages: { role: 'user' | 'assistant'; content: string }[];
+    clientIsoTime?: string;
+    tzOffsetMinutes?: number;
+  }) =>
+    request<{
+      message: string;
+      pendingConfirmations: { id: string; tool: string; arguments: Record<string, unknown>; summary: string }[];
+      pendingMutations: { id: string; tool: string; arguments: Record<string, unknown>; summary: string }[];
+      workContext: 'notes' | 'tasks' | 'schedule' | null;
+      dirtyNotes?: boolean;
+      dirtyTasks?: boolean;
+      dirtyTemplates?: boolean;
+    }>('/ai/chat', { method: 'POST', body: JSON.stringify(body) }),
+
+  aiExecuteActions: (actions: { tool: string; arguments: Record<string, unknown> }[]) =>
+    request<{ results: { ok: boolean; tool: string; error?: string; item?: unknown; deleted?: unknown }[] }>(
+      '/ai/execute-actions',
+      { method: 'POST', body: JSON.stringify({ actions }) },
+    ),
 };

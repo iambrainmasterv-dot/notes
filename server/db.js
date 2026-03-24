@@ -137,4 +137,10 @@ export async function initDb() {
   for (const sql of alterCols) {
     await pool.query(sql).catch(() => {});
   }
+
+  await pool
+    .query(
+      'ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS ai_agent_mutations_enabled BOOLEAN NOT NULL DEFAULT true',
+    )
+    .catch(() => {});
 }
