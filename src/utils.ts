@@ -359,6 +359,11 @@ export function greetingDismissedSessionKey(userId: string): string {
   return `notetasks.greetingDismissed.${userId}`;
 }
 
+/** Set for the rest of the browser session after tutorial completes; welcome greeting shows next session. */
+export function greetingSuppressUntilNextSessionAfterTutorialKey(userId: string): string {
+  return `notetasks.greetingSuppressAfterTutorial.${userId}`;
+}
+
 export function completedLastEmptyStorageKey(userId: string): string {
   return `notetasks.completedLastEmptyAt.${userId}`;
 }

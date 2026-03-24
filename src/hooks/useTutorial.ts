@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { tutorialCompletedStorageKey } from '../utils';
+import { greetingSuppressUntilNextSessionAfterTutorialKey, tutorialCompletedStorageKey } from '../utils';
 import type { Page } from '../types';
 
 export type TutorialGate = 'none' | 'requireNewNote' | 'requireNewTask';
@@ -181,6 +181,9 @@ export function useTutorial(
   const finish = useCallback(() => {
     if (userId && typeof localStorage !== 'undefined') {
       localStorage.setItem(tutorialCompletedStorageKey(userId), '1');
+    }
+    if (userId && typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem(greetingSuppressUntilNextSessionAfterTutorialKey(userId), '1');
     }
     setActive(false);
     setSettingsOpen(false);

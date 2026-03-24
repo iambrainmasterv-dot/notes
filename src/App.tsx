@@ -33,9 +33,11 @@ import {
   countActiveExpiredItems,
   formatLongDate,
   greetingDismissedSessionKey,
+  greetingSuppressUntilNextSessionAfterTutorialKey,
   lastVisitAbsenceLine,
   lastVisitStorageKey,
   templatesMatchingAppDay,
+  tutorialCompletedStorageKey,
 } from './utils';
 
 const tabs: { key: Page; label: string; icon: React.ReactNode }[] = [
@@ -185,14 +187,32 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
 
   const [greetingOpen, setGreetingOpen] = useState(false);
 
+  const [openCreateNoteNonce, setOpenCreateNoteNonce] = useState(0);
+  const [openCreateTaskNonce, setOpenCreateTaskNonce] = useState(0);
+
+  const tutorial = useTutorial(userId, setPage, setSettingsOpen, notes.length, tasks.length);
+
+  const tutorialMarkedComplete = useMemo(() => {
+    if (!userId || typeof localStorage === 'undefined') return false;
+    return localStorage.getItem(tutorialCompletedStorageKey(userId)) === '1';
+  }, [userId, tutorial.active]);
+
   useEffect(() => {
     if (!userId || typeof sessionStorage === 'undefined') {
       setGreetingOpen(false);
       return;
     }
+    if (!tutorialMarkedComplete) {
+      setGreetingOpen(false);
+      return;
+    }
+    if (sessionStorage.getItem(greetingSuppressUntilNextSessionAfterTutorialKey(userId)) === '1') {
+      setGreetingOpen(false);
+      return;
+    }
     const dismissed = sessionStorage.getItem(greetingDismissedSessionKey(userId)) === '1';
     setGreetingOpen(!dismissed);
-  }, [userId]);
+  }, [userId, tutorialMarkedComplete]);
 
   const lastVisitAtMs = useMemo(() => {
     if (!userId || typeof localStorage === 'undefined') return null;
@@ -279,11 +299,6 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
     },
     [notes, tasks, setNotes, setTasks],
   );
-
-  const [openCreateNoteNonce, setOpenCreateNoteNonce] = useState(0);
-  const [openCreateTaskNonce, setOpenCreateTaskNonce] = useState(0);
-
-  const tutorial = useTutorial(userId, setPage, setSettingsOpen, notes.length, tasks.length);
 
   const handleGreetingDismiss = useCallback(() => {
     if (userId && typeof localStorage !== 'undefined') {
