@@ -140,6 +140,31 @@ export function ThemePanel({ settings, onUpdate, localImportAvailable, onImportL
         />
       </div>
 
+      <div className="theme-section">
+        <span className="theme-label">Assistant</span>
+        <p className="theme-help">
+          Allow the in-app AI to create, update, or delete notes and tasks. Chat still works when this is off.
+        </p>
+        <div className="theme-modes">
+          <button
+            type="button"
+            className={`theme-mode-btn ${settings.aiAgentMutationsEnabled ? 'active' : ''}`}
+            onClick={() => onUpdate({ aiAgentMutationsEnabled: true })}
+          >
+            <span>✓</span>
+            <span>Allow edits</span>
+          </button>
+          <button
+            type="button"
+            className={`theme-mode-btn ${!settings.aiAgentMutationsEnabled ? 'active' : ''}`}
+            onClick={() => onUpdate({ aiAgentMutationsEnabled: false })}
+          >
+            <span>○</span>
+            <span>Chat only</span>
+          </button>
+        </div>
+      </div>
+
       {onRerunTutorial && (
         <div className="theme-section">
           <span className="theme-label">Guided tour</span>

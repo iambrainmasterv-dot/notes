@@ -49,12 +49,23 @@ export function useNotes() {
   const [notes, setNotes] = useState<Note[]>([]);
   const loaded = useRef(false);
 
-  useEffect(() => {
+  const refetch = useCallback(() => {
     if (!user) return;
-    api.getNotes()
-      .then((rows) => { setNotes(rows.map(fromApi)); loaded.current = true; })
-      .catch(() => { setNotes(storage.getNotes()); loaded.current = true; });
+    api
+      .getNotes()
+      .then((rows) => {
+        setNotes(rows.map(fromApi));
+        loaded.current = true;
+      })
+      .catch(() => {
+        setNotes(storage.getNotes());
+        loaded.current = true;
+      });
   }, [user]);
+
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
 
   useEffect(() => {
     if (!loaded.current) return;
@@ -108,5 +119,5 @@ export function useNotes() {
     api.updateNote(id, { completed: false }).catch(() => {});
   }, []);
 
-  return { notes, addNote, updateNote, deleteNote, completeNote, recoverNote, setNotes };
+  return { notes, addNote, updateNote, deleteNote, completeNote, recoverNote, setNotes, refetch };
 }
