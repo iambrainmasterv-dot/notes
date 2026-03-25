@@ -41,10 +41,7 @@ export type Item = Note | Task;
 
 export type ViewMode = 'list' | 'table' | 'canvas';
 
-export type Page = 'pool' | 'schedule' | 'notes' | 'tasks' | 'completed' | 'assistant';
-
-/** Suggested main tab when the assistant touches schedule vs notes vs tasks data */
-export type AssistantWorkContext = 'notes' | 'tasks' | 'schedule';
+export type Page = 'pool' | 'schedule' | 'notes' | 'tasks' | 'completed';
 
 export type SortField = 'title' | 'deadline' | 'createdAt' | 'progress' | 'type';
 export type SortDir = 'asc' | 'desc';
@@ -67,8 +64,6 @@ export interface ThemeSettings {
   uiScale: UIScale;
   fontScale: FontScale;
   dailyResetTime: string;
-  /** When false, the AI assistant cannot create, update, or delete items (chat only). */
-  aiAgentMutationsEnabled: boolean;
 }
 
 export type DeadlineSeverity = 'ok' | 'soon' | 'urgent' | 'expired';

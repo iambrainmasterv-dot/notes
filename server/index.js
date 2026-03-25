@@ -14,7 +14,6 @@ import instancesRoutes from './routes/instances.js';
 import presetsRoutes from './routes/presets.js';
 import scheduleTemplatesRoutes from './routes/scheduleTemplates.js';
 import importRoutes from './routes/import.js';
-import aiRoutes from './routes/ai.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -33,7 +32,6 @@ app.use('/api/instances', authMiddleware, instancesRoutes);
 app.use('/api/presets', authMiddleware, presetsRoutes);
 app.use('/api/schedule-templates', authMiddleware, scheduleTemplatesRoutes);
 app.use('/api/import', authMiddleware, importRoutes);
-app.use('/api/ai', authMiddleware, aiRoutes);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 

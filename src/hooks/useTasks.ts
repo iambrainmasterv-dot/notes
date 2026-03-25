@@ -47,23 +47,12 @@ export function useTasks() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const loaded = useRef(false);
 
-  const refetch = useCallback(() => {
-    if (!user) return;
-    api
-      .getTasks()
-      .then((rows) => {
-        setTasks(rows.map(fromApi));
-        loaded.current = true;
-      })
-      .catch(() => {
-        setTasks(storage.getTasks());
-        loaded.current = true;
-      });
-  }, [user]);
-
   useEffect(() => {
-    refetch();
-  }, [refetch]);
+    if (!user) return;
+    api.getTasks()
+      .then((rows) => { setTasks(rows.map(fromApi)); loaded.current = true; })
+      .catch(() => { setTasks(storage.getTasks()); loaded.current = true; });
+  }, [user]);
 
   useEffect(() => {
     if (!loaded.current) return;
@@ -117,5 +106,5 @@ export function useTasks() {
     api.updateTask(id, { completed: false }).catch(() => {});
   }, []);
 
-  return { tasks, addTask, updateTask, deleteTask, completeTask, recoverTask, setTasks, refetch };
+  return { tasks, addTask, updateTask, deleteTask, completeTask, recoverTask, setTasks };
 }

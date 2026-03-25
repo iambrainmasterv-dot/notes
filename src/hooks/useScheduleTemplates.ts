@@ -117,14 +117,5 @@ export function useScheduleTemplates() {
     setTemplates((rows as unknown as RawTemplate[]).map(fromApi));
   }, []);
 
-  const refetch = useCallback(() => {
-    api
-      .getScheduleTemplates()
-      .then((rows) => {
-        setTemplates((rows as unknown as RawTemplate[]).map(fromApi));
-      })
-      .catch(() => {});
-  }, []);
-
-  return { templates, addTemplate, updateTemplate, deleteTemplate, refetch };
+  return { templates, addTemplate, updateTemplate, deleteTemplate };
 }

@@ -14,15 +14,7 @@ router.get('/', async (req, res) => {
 });
 
 router.patch('/', async (req, res) => {
-  const allowed = [
-    'daily_reset_time',
-    'theme_mode',
-    'accent',
-    'ui_scale',
-    'font_scale',
-    'last_reset_tag',
-    'ai_agent_mutations_enabled',
-  ];
+  const allowed = ['daily_reset_time', 'theme_mode', 'accent', 'ui_scale', 'font_scale', 'last_reset_tag'];
   const sets = [];
   const vals = [];
   let i = 1;

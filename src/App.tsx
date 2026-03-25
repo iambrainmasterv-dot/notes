@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import type { AssistantWorkContext, Page } from './types';
+import type { Page } from './types';
 import { useAuth } from './auth/AuthProvider';
 import { LoginPage } from './pages/LoginPage';
 import { useNotes } from './hooks/useNotes';
@@ -18,10 +18,7 @@ import { TasksPage } from './pages/TasksPage';
 import { PoolPage } from './pages/PoolPage';
 import { SchedulePage } from './pages/SchedulePage';
 import { CompletedPage } from './pages/CompletedPage';
-import { AssistantPage } from './pages/AssistantPage';
-import { AssistantDock } from './components/AssistantDock';
 import { ThemePanel } from './components/ThemePanel';
-import { useAssistantChat } from './hooks/useAssistantChat';
 import { NotificationBell } from './components/NotificationBell';
 import { Toasts } from './components/Toasts';
 import { GreetingScreen } from './components/GreetingScreen';
@@ -61,10 +58,6 @@ const tabs: { key: Page; label: string; icon: React.ReactNode }[] = [
     icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>,
   },
   {
-    key: 'assistant', label: 'Assistant',
-    icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 3a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V21l-4-2H9a7 7 0 1 1 3-18z"/><circle cx="9" cy="11" r="0.9" fill="currentColor"/><circle cx="12" cy="11" r="0.9" fill="currentColor"/><circle cx="15" cy="11" r="0.9" fill="currentColor"/></svg>,
-  },
-  {
     key: 'completed', label: 'Completed',
     icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
   },
@@ -95,20 +88,15 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
   const [page, setPage] = useState<Page>('pool');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
-  const { notes, addNote, updateNote, recoverNote, setNotes, refetch: refetchNotes } = useNotes();
-  const { tasks, addTask, updateTask, recoverTask, setTasks, refetch: refetchTasks } = useTasks();
+  const { notes, addNote, updateNote, recoverNote, setNotes } = useNotes();
+  const { tasks, addTask, updateTask, recoverTask, setTasks } = useTasks();
   const { settings, update: updateTheme, lastResetTag, saveResetTag } = useUserSettings();
   useThemeApply(settings);
   const { presets, addPreset, updatePreset, deletePreset } = usePresets();
 
   useDailyReset({ dailyResetTime: settings.dailyResetTime, setNotes, setTasks, lastResetTag, saveResetTag });
 
-  const {
-    templates: scheduleTemplates,
-    addTemplate: addScheduleTemplate,
-    deleteTemplate: deleteScheduleTemplate,
-    refetch: refetchScheduleTemplates,
-  } = useScheduleTemplates();
+  const { templates: scheduleTemplates, addTemplate: addScheduleTemplate, deleteTemplate: deleteScheduleTemplate } = useScheduleTemplates();
   useScheduleTemplateSync({ dailyResetTime: settings.dailyResetTime, lastResetTag, templates: scheduleTemplates, setNotes, setTasks });
 
   const { hasLocalData, importLocalData } = useLocalImport();
@@ -201,49 +189,6 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
 
   const [openCreateNoteNonce, setOpenCreateNoteNonce] = useState(0);
   const [openCreateTaskNonce, setOpenCreateTaskNonce] = useState(0);
-
-  const [wideViewport, setWideViewport] = useState(false);
-  const [assistantDockOpen, setAssistantDockOpen] = useState(false);
-
-  useEffect(() => {
-    const m = window.matchMedia('(min-width: 960px)');
-    const apply = () => setWideViewport(m.matches);
-    apply();
-    m.addEventListener('change', apply);
-    return () => m.removeEventListener('change', apply);
-  }, []);
-
-  const refetchWorkspace = useCallback(() => {
-    refetchNotes();
-    refetchTasks();
-    refetchScheduleTemplates();
-  }, [refetchNotes, refetchTasks, refetchScheduleTemplates]);
-
-  const handleAssistantWorkContext = useCallback((ctx: AssistantWorkContext | null) => {
-    if (!ctx) return;
-    setPage(ctx);
-    setNotifOpen(false);
-  }, []);
-
-  const assistantChat = useAssistantChat({
-    mutationsEnabled: settings.aiAgentMutationsEnabled,
-    onWorkContext: handleAssistantWorkContext,
-    onDataChanged: refetchWorkspace,
-  });
-
-  const assistantPanelProps = {
-    mutationsEnabled: settings.aiAgentMutationsEnabled,
-    messages: assistantChat.messages,
-    pendingConfirmations: assistantChat.pendingConfirmations,
-    pendingMutations: assistantChat.pendingMutations,
-    loading: assistantChat.loading,
-    error: assistantChat.error,
-    onSend: assistantChat.send,
-    onExecute: assistantChat.executeItems,
-    onDismissError: () => assistantChat.setError(null),
-  };
-
-  const showAssistantDock = wideViewport && assistantDockOpen && page !== 'assistant';
 
   const tutorial = useTutorial(userId, setPage, setSettingsOpen, notes.length, tasks.length);
 
@@ -434,21 +379,6 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
           ))}
         </ul>
 
-        {wideViewport && (
-          <div className="sidebar-dock-toggle-wrap">
-            <button
-              type="button"
-              className={`nav-item ${assistantDockOpen ? 'active' : ''}`}
-              onClick={() => setAssistantDockOpen((o) => !o)}
-            >
-              <span className="nav-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="14" y="3" width="7" height="18" rx="1"/><rect x="3" y="5" width="8" height="14" rx="1"/></svg>
-              </span>
-              <span className="nav-label">Side assistant</span>
-            </button>
-          </div>
-        )}
-
         <div className="sidebar-bottom">
           <div className="sidebar-bottom-row">
             <button type="button" className={`nav-item ${settingsOpen ? 'active' : ''}`} onClick={() => setSettingsOpen((p) => !p)}>
@@ -479,9 +409,7 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
         </div>
       </nav>
 
-      <div className="app-main-row">
       <main className="main-content" onClick={() => setNotifOpen(false)}>
-        {page === 'assistant' && <AssistantPage {...assistantPanelProps} />}
         {page === 'pool' && (
           <PoolPage notes={notes} tasks={tasks}
             addNote={addNote} addTask={addTask}
@@ -542,10 +470,6 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
             deleteNote={deleteNoteCascade} deleteTask={deleteTaskCascade} setNotes={setNotes} setTasks={setTasks} />
         )}
       </main>
-      {showAssistantDock && (
-        <AssistantDock {...assistantPanelProps} onClose={() => setAssistantDockOpen(false)} />
-      )}
-      </div>
     </div>
   );
 }
