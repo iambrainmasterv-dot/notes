@@ -1,27 +1,99 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../auth/AuthProvider';
+import { api } from '../api/client';
 import { APP_VERSION } from '../version';
+
+function readResetTokenFromUrl(): string {
+  if (typeof window === 'undefined') return '';
+  return new URLSearchParams(window.location.search).get('reset')?.trim() || '';
+}
+
+type LoginMode = 'signin' | 'signup' | 'forgot' | 'reset';
 
 export function LoginPage() {
   const { signIn, signUp } = useAuth();
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [mode, setMode] = useState<LoginMode>(() => (readResetTokenFromUrl() ? 'reset' : 'signin'));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
+  const [resetToken, setResetToken] = useState(readResetTokenFromUrl);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPw, setConfirmNewPw] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!resetToken) return;
+    const path = window.location.pathname + window.location.hash;
+    window.history.replaceState({}, document.title, path);
+  }, [resetToken]);
+
+  const goSignIn = () => {
+    setMode('signin');
+    setError(null);
+    setSuccess(null);
+    setResetToken('');
+    setNewPassword('');
+    setConfirmNewPw('');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
 
+    if (mode === 'forgot') {
+      if (!email.trim()) {
+        setError('Email is required.');
+        return;
+      }
+      setLoading(true);
+      try {
+        const res = await api.forgotPassword(email);
+        setSuccess(res.message || 'Check your email for reset instructions.');
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Request failed');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (mode === 'reset') {
+      if (!resetToken) {
+        setError('This reset link is invalid. Request a new one from Sign in.');
+        return;
+      }
+      if (!newPassword.trim() || newPassword.length < 6) {
+        setError('Password must be at least 6 characters.');
+        return;
+      }
+      if (newPassword !== confirmNewPw) {
+        setError('Passwords do not match.');
+        return;
+      }
+      setLoading(true);
+      try {
+        await api.resetPassword(resetToken, newPassword);
+        setResetToken('');
+        setNewPassword('');
+        setConfirmNewPw('');
+        setMode('signin');
+        setSuccess('Password updated. Sign in with your new password.');
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Request failed');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     if (!email.trim() || !password.trim()) {
       setError('Email and password are required.');
       return;
     }
-    if (isSignUp && password !== confirmPw) {
+    if (mode === 'signup' && password !== confirmPw) {
       setError('Passwords do not match.');
       return;
     }
@@ -31,7 +103,7 @@ export function LoginPage() {
     }
 
     setLoading(true);
-    const err = isSignUp ? await signUp(email, password) : await signIn(email, password);
+    const err = mode === 'signup' ? await signUp(email, password) : await signIn(email, password);
     setLoading(false);
 
     if (err) {
@@ -47,63 +119,146 @@ export function LoginPage() {
           <span className="brand-text">NoteTasks</span>
         </div>
 
-        <h2 className="login-title">{isSignUp ? 'Create Account' : 'Sign In'}</h2>
+        <h2 className="login-title">
+          {mode === 'signup' && 'Create Account'}
+          {mode === 'signin' && 'Sign In'}
+          {mode === 'forgot' && 'Reset password'}
+          {mode === 'reset' && 'Choose new password'}
+        </h2>
 
         <form className="login-form" onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Email</label>
-            <input
-              className="input"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoFocus
-              placeholder="you@example.com"
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Password</label>
-            <input
-              className="input"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-            />
-          </div>
-
-          {isSignUp && (
+          {mode !== 'reset' && (
             <div className="form-group">
-              <label>Confirm Password</label>
+              <label>Email</label>
               <input
                 className="input"
-                type="password"
-                value={confirmPw}
-                onChange={(e) => setConfirmPw(e.target.value)}
-                placeholder="••••••••"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoFocus={mode === 'signin' || mode === 'signup' || mode === 'forgot'}
+                placeholder="you@example.com"
+                disabled={mode === 'forgot' && Boolean(success)}
               />
             </div>
+          )}
+
+          {(mode === 'signin' || mode === 'signup') && (
+            <>
+              <div className="form-group">
+                <label>Password</label>
+                <input
+                  className="input"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                />
+              </div>
+              {mode === 'signup' && (
+                <div className="form-group">
+                  <label>Confirm Password</label>
+                  <input
+                    className="input"
+                    type="password"
+                    value={confirmPw}
+                    onChange={(e) => setConfirmPw(e.target.value)}
+                    placeholder="••••••••"
+                  />
+                </div>
+              )}
+            </>
+          )}
+
+          {mode === 'forgot' && !success && (
+            <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+              We’ll email you a link to set a new password if this address is registered.
+            </p>
+          )}
+
+          {mode === 'reset' && (
+            <>
+              <div className="form-group">
+                <label>New password</label>
+                <input
+                  className="input"
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="••••••••"
+                  autoFocus
+                />
+              </div>
+              <div className="form-group">
+                <label>Confirm new password</label>
+                <input
+                  className="input"
+                  type="password"
+                  value={confirmNewPw}
+                  onChange={(e) => setConfirmNewPw(e.target.value)}
+                  placeholder="••••••••"
+                />
+              </div>
+            </>
           )}
 
           {error && <p className="login-error">{error}</p>}
           {success && <p className="login-success">{success}</p>}
 
-          <button className="btn btn-primary btn-full" type="submit" disabled={loading}>
-            {loading ? 'Please wait…' : isSignUp ? 'Sign Up' : 'Sign In'}
-          </button>
+          {!(mode === 'forgot' && success) && (
+            <button className="btn btn-primary btn-full" type="submit" disabled={loading}>
+              {loading
+                ? 'Please wait…'
+                : mode === 'signup'
+                  ? 'Sign Up'
+                  : mode === 'signin'
+                    ? 'Sign In'
+                    : mode === 'forgot'
+                      ? 'Send reset link'
+                      : 'Update password'}
+            </button>
+          )}
         </form>
 
-        <p className="login-toggle">
-          {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
-          <button
-            className="btn-link"
-            type="button"
-            onClick={() => { setIsSignUp((p) => !p); setError(null); setSuccess(null); }}
-          >
-            {isSignUp ? 'Sign In' : 'Sign Up'}
-          </button>
-        </p>
+        {mode === 'signin' && (
+          <p className="login-toggle" style={{ marginTop: 12 }}>
+            <button
+              type="button"
+              className="btn-link"
+              onClick={() => {
+                setMode('forgot');
+                setError(null);
+                setSuccess(null);
+              }}
+            >
+              Forgot password?
+            </button>
+          </p>
+        )}
+
+        {mode !== 'forgot' && mode !== 'reset' && (
+          <p className="login-toggle">
+            {mode === 'signup' ? 'Already have an account?' : "Don't have an account?"}{' '}
+            <button
+              type="button"
+              className="btn-link"
+              onClick={() => {
+                setMode((m) => (m === 'signup' ? 'signin' : 'signup'));
+                setError(null);
+                setSuccess(null);
+              }}
+            >
+              {mode === 'signup' ? 'Sign In' : 'Sign Up'}
+            </button>
+          </p>
+        )}
+
+        {(mode === 'forgot' || mode === 'reset') && (
+          <p className="login-toggle">
+            <button type="button" className="btn-link" onClick={goSignIn}>
+              Back to Sign in
+            </button>
+          </p>
+        )}
 
         <p className="login-version">v{APP_VERSION}</p>
       </div>

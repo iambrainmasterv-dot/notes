@@ -9,9 +9,9 @@ export function AssistantPage(props: Props) {
   return (
     <div className="assistant-page">
       <header className="page-header">
-        <h1 className="page-title">Assistant</h1>
+        <h1 className="page-title">Jarvis</h1>
         <p className="page-subtitle" style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-          Local Ollama-powered help (no API key). Session-only chat; data changes follow your Settings and confirmation
+          Jarvis runs on local Ollama (no API key). Session-only chat; data changes follow your Settings and confirmation
           rules.
         </p>
       </header>

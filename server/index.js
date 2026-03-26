@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './loadEnv.js';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -19,6 +19,10 @@ import aiRoutes from './routes/ai.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+if (process.env.TRUST_PROXY === 'true' || process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
 
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));

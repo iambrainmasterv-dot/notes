@@ -2,8 +2,49 @@ import { Router } from 'express';
 import { pool } from '../db.js';
 import { runAgentChat } from '../services/aiAgent.js';
 import { executeConfirmedActions } from '../services/agentExecutor.js';
+import { ollamaFetchExtraHeaders } from '../services/ollamaTunnelHeaders.js';
 
 const router = Router();
+
+async function resolveOllamaBase(userId) {
+  const { rows } = await pool.query(
+    'SELECT ollama_base_url FROM user_settings WHERE user_id = $1',
+    [userId],
+  );
+  const fromDb = rows[0]?.ollama_base_url;
+  if (typeof fromDb === 'string' && fromDb.trim()) {
+    return fromDb.trim().replace(/\/$/, '');
+  }
+  const env = process.env.OLLAMA_BASE_URL?.trim();
+  if (env) return env.replace(/\/$/, '');
+  return '';
+}
+
+router.get('/availability', async (req, res) => {
+  try {
+    const base = await resolveOllamaBase(req.userId);
+    if (!base) {
+      return res.json({ available: false });
+    }
+    const versionUrl = `${base}/api/version`;
+    const signal = AbortSignal.timeout(2000);
+    const r = await fetch(versionUrl, {
+      signal,
+      headers: ollamaFetchExtraHeaders(base),
+    });
+    if (!r.ok) {
+      return res.json({ available: false });
+    }
+    const data = await r.json().catch(() => null);
+    if (!data || typeof data !== 'object') {
+      return res.json({ available: false });
+    }
+    return res.json({ available: true });
+  } catch (e) {
+    console.error('GET /api/ai/availability', e?.message || e);
+    return res.json({ available: false });
+  }
+});
 
 async function loadMutationFlag(userId) {
   const { rows } = await pool.query(
@@ -16,6 +57,13 @@ async function loadMutationFlag(userId) {
 
 router.post('/chat', async (req, res) => {
   try {
+    const ollamaBase = await resolveOllamaBase(req.userId);
+    if (!ollamaBase) {
+      return res.status(503).json({
+        error:
+          'No Ollama URL configured. Add it in Settings → Jarvis (Ollama base URL), or set OLLAMA_BASE_URL on the server.',
+      });
+    }
     const settingsRow = await loadMutationFlag(req.userId);
     const {
       message,
@@ -31,6 +79,7 @@ router.post('/chat', async (req, res) => {
       clientIsoTime: req.body?.clientIsoTime,
       tzOffsetMinutes: req.body?.tzOffsetMinutes,
       settingsRow,
+      ollamaBase,
     });
     res.json({
       message,

@@ -17,6 +17,7 @@ function loadLocalSettings(): ThemeSettings {
         fontScale: p.fontScale ?? 'default',
         dailyResetTime: p.dailyResetTime ?? '00:00',
         aiAgentMutationsEnabled: p.aiAgentMutationsEnabled !== false,
+        ollamaBaseUrl: p.ollamaBaseUrl ?? null,
       };
     }
   } catch { /* ignore */ }
@@ -27,6 +28,7 @@ function loadLocalSettings(): ThemeSettings {
     fontScale: 'default',
     dailyResetTime: '00:00',
     aiAgentMutationsEnabled: true,
+    ollamaBaseUrl: null,
   };
 }
 
@@ -47,6 +49,7 @@ export function useUserSettings() {
           fontScale: (data.font_scale as ThemeSettings['fontScale']) ?? 'default',
           dailyResetTime: (data.daily_reset_time as string) ?? '00:00',
           aiAgentMutationsEnabled: data.ai_agent_mutations_enabled !== false,
+          ollamaBaseUrl: typeof data.ollama_base_url === 'string' ? data.ollama_base_url : null,
         };
         setSettings(remote);
         setLastResetTag((data.last_reset_tag as string) ?? null);
@@ -71,6 +74,10 @@ export function useUserSettings() {
         if (patch.aiAgentMutationsEnabled !== undefined) {
           dbPatch.ai_agent_mutations_enabled = patch.aiAgentMutationsEnabled;
         }
+        if (patch.ollamaBaseUrl !== undefined) {
+          dbPatch.ollama_base_url =
+            patch.ollamaBaseUrl === null || patch.ollamaBaseUrl === '' ? null : patch.ollamaBaseUrl;
+        }
         if (Object.keys(dbPatch).length > 0) api.updateSettings(dbPatch).catch(() => {});
 
         return next;
@@ -87,5 +94,14 @@ export function useUserSettings() {
     [],
   );
 
-  return { settings, update, lastResetTag, saveResetTag };
+  /** Update theme state + localStorage without calling the API (use after a direct settings save). */
+  const applySettingsLocal = useCallback((patch: Partial<ThemeSettings>) => {
+    setSettings((prev) => {
+      const next = { ...prev, ...patch };
+      localStorage.setItem(THEME_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  return { settings, update, lastResetTag, saveResetTag, applySettingsLocal };
 }

@@ -61,7 +61,7 @@ const tabs: { key: Page; label: string; icon: React.ReactNode }[] = [
     icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>,
   },
   {
-    key: 'assistant', label: 'Assistant',
+    key: 'assistant', label: 'Jarvis',
     icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 3a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V21l-4-2H9a7 7 0 1 1 3-18z"/><circle cx="9" cy="11" r="0.9" fill="currentColor"/><circle cx="12" cy="11" r="0.9" fill="currentColor"/><circle cx="15" cy="11" r="0.9" fill="currentColor"/></svg>,
   },
   {
@@ -97,7 +97,7 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const { notes, addNote, updateNote, recoverNote, setNotes, refetch: refetchNotes } = useNotes();
   const { tasks, addTask, updateTask, recoverTask, setTasks, refetch: refetchTasks } = useTasks();
-  const { settings, update: updateTheme, lastResetTag, saveResetTag } = useUserSettings();
+  const { settings, update: updateTheme, lastResetTag, saveResetTag, applySettingsLocal } = useUserSettings();
   useThemeApply(settings);
   const { presets, addPreset, updatePreset, deletePreset } = usePresets();
 
@@ -204,6 +204,50 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
 
   const [wideViewport, setWideViewport] = useState(false);
   const [assistantDockOpen, setAssistantDockOpen] = useState(false);
+  const [assistantAvailable, setAssistantAvailable] = useState<boolean | null>(null);
+
+  const checkAssistantAvailability = useCallback(async () => {
+    const { available } = await api.getAssistantAvailability();
+    setAssistantAvailable(available);
+  }, []);
+
+  useEffect(() => {
+    void checkAssistantAvailability();
+    const id = window.setInterval(() => {
+      void checkAssistantAvailability();
+    }, 60_000);
+    const onFocus = () => {
+      void checkAssistantAvailability();
+    };
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void checkAssistantAvailability();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [checkAssistantAvailability]);
+
+  useEffect(() => {
+    if (assistantAvailable === false && page === 'assistant') {
+      setPage('pool');
+    }
+  }, [assistantAvailable, page]);
+
+  useEffect(() => {
+    if (assistantAvailable === false) setAssistantDockOpen(false);
+  }, [assistantAvailable]);
+
+  /** Hide Jarvis tab only after an explicit false; null (loading) still shows the tab (local dev UX). */
+  const showAssistantInUi = assistantAvailable !== false;
+
+  const visibleTabs = useMemo(
+    () => (showAssistantInUi ? tabs : tabs.filter((t) => t.key !== 'assistant')),
+    [showAssistantInUi],
+  );
 
   useEffect(() => {
     const m = window.matchMedia('(min-width: 960px)');
@@ -243,7 +287,8 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
     onDismissError: () => assistantChat.setError(null),
   };
 
-  const showAssistantDock = wideViewport && assistantDockOpen && page !== 'assistant';
+  const showAssistantDock =
+    showAssistantInUi && wideViewport && assistantDockOpen && page !== 'assistant';
 
   const tutorial = useTutorial(userId, setPage, setSettingsOpen, notes.length, tasks.length);
 
@@ -412,7 +457,7 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
         </div>
 
         <ul className="sidebar-nav">
-          {tabs.map((tab) => (
+          {visibleTabs.map((tab) => (
             <li key={tab.key}>
               <button
                 className={`nav-item ${page === tab.key ? 'active' : ''}`}
@@ -434,7 +479,7 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
           ))}
         </ul>
 
-        {wideViewport && (
+        {wideViewport && showAssistantInUi && (
           <div className="sidebar-dock-toggle-wrap">
             <button
               type="button"
@@ -444,7 +489,7 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
               <span className="nav-icon">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="14" y="3" width="7" height="18" rx="1"/><rect x="3" y="5" width="8" height="14" rx="1"/></svg>
               </span>
-              <span className="nav-label">Side assistant</span>
+              <span className="nav-label">Side Jarvis</span>
             </button>
           </div>
         )}
@@ -462,6 +507,10 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
             <ThemePanel
               settings={settings}
               onUpdate={updateTheme}
+              applySettingsLocal={applySettingsLocal}
+              onOllamaUrlSaved={() => {
+                void checkAssistantAvailability();
+              }}
               localImportAvailable={localImportAvailable}
               onImportLocal={handleImportLocal}
               onRerunTutorial={tutorial.rerun}
@@ -481,7 +530,7 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
 
       <div className="app-main-row">
       <main className="main-content" onClick={() => setNotifOpen(false)}>
-        {page === 'assistant' && <AssistantPage {...assistantPanelProps} />}
+        {showAssistantInUi && page === 'assistant' && <AssistantPage {...assistantPanelProps} />}
         {page === 'pool' && (
           <PoolPage notes={notes} tasks={tasks}
             addNote={addNote} addTask={addTask}

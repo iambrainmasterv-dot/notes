@@ -7,7 +7,7 @@ const MUTATION_VERBS =
 const SOFT =
   /\b(should i|could i|would it|what if|maybe|perhaps|recommend|suggest|ideas?|thoughts?|help me decide|do you think)\b/i;
 
-/** Short follow-ups after the assistant proposed a concrete change */
+/** Short follow-ups after Jarvis proposed a concrete change */
 const SHORT_AFFIRM =
   /^\s*(yes|yep|yeah|yup|ok|okay|sure|do it|go ahead|please do|please|confirm|apply|proceed|sounds good|that's fine|thats fine)\s*[!.]?\s*$/i;
 

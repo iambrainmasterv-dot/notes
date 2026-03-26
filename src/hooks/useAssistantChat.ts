@@ -25,6 +25,12 @@ export function useAssistantChat(options: {
   const onWorkContextRef = useRef(options.onWorkContext);
   const onDataChangedRef = useRef(options.onDataChanged);
   const mutationsRef = useRef(options.mutationsEnabled);
+  const messagesRef = useRef<AssistantChatMessage[]>([]);
+  const sendInFlightRef = useRef(false);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     onWorkContextRef.current = options.onWorkContext;
@@ -35,38 +41,38 @@ export function useAssistantChat(options: {
   const send = useCallback(async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
+    if (sendInFlightRef.current) return;
+    sendInFlightRef.current = true;
     setError(null);
-    setMessages((prev) => {
-      const next = [...prev, { role: 'user' as const, content: trimmed }];
-      void (async () => {
-        setLoading(true);
-        try {
-          const res = await api.aiChat({
-            messages: next,
-            clientIsoTime: new Date().toISOString(),
-            tzOffsetMinutes: new Date().getTimezoneOffset(),
-          });
-          setMessages((p) => [...p, { role: 'assistant', content: res.message || '' }]);
-          setPendingConfirmations(res.pendingConfirmations ?? []);
-          setPendingMutations(res.pendingMutations ?? []);
-          if (res.dirtyNotes || res.dirtyTasks || res.dirtyTemplates) {
-            onDataChangedRef.current?.();
-          }
-          onWorkContextRef.current?.(res.workContext);
-        } catch (e) {
-          setError(e instanceof Error ? e.message : 'Request failed');
-        } finally {
-          setLoading(false);
-        }
-      })();
-      return next;
-    });
+    const userMsg: AssistantChatMessage = { role: 'user', content: trimmed };
+    const nextMessages = [...messagesRef.current, userMsg];
+    setMessages(nextMessages);
+    setLoading(true);
+    try {
+      const res = await api.aiChat({
+        messages: nextMessages,
+        clientIsoTime: new Date().toISOString(),
+        tzOffsetMinutes: new Date().getTimezoneOffset(),
+      });
+      setMessages((prev) => [...prev, { role: 'assistant', content: res.message || '' }]);
+      setPendingConfirmations(res.pendingConfirmations ?? []);
+      setPendingMutations(res.pendingMutations ?? []);
+      if (res.dirtyNotes || res.dirtyTasks || res.dirtyTemplates) {
+        onDataChangedRef.current?.();
+      }
+      onWorkContextRef.current?.(res.workContext);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Request failed');
+    } finally {
+      setLoading(false);
+      sendInFlightRef.current = false;
+    }
   }, []);
 
   const executeItems = useCallback(async (items: AssistantPendingItem[]) => {
     if (items.length === 0) return;
     if (!mutationsRef.current) {
-      setError('Turn on “Allow AI to edit data” in Settings to apply changes.');
+      setError('Turn on Allow edits (Jarvis section in Settings) to apply changes.');
       return;
     }
     setError(null);

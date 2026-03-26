@@ -1,5 +1,6 @@
 import { AGENT_TOOL_DEFINITIONS, runAgentTool } from './agentExecutor.js';
 import { isClearMutationIntent, mergeWorkContext } from './intentPolicy.js';
+import { ollamaFetchExtraHeaders } from './ollamaTunnelHeaders.js';
 
 const MAX_CLIENT_MESSAGES = 40;
 const MAX_MESSAGE_CHARS = 12000;
@@ -33,7 +34,7 @@ function normalizeAgentToolName(raw) {
   return s;
 }
 
-function ollamaBaseUrl() {
+function fallbackOllamaBaseUrl() {
   const raw = process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434';
   return String(raw).replace(/\/$/, '');
 }
@@ -65,18 +66,19 @@ function buildSystemPrompt({ clientIsoTime, tzOffsetMinutes, mutationsEnabled })
       : '';
 
   return [
-    'You are the in-app assistant for NoteTasks, a notes and tasks app with Pool, Schedule, Notes, Tasks, Completed, Assistant, and settings.',
-    'Use tools to read or change user data. Prefer tools over guessing.',
-    'To create a note or task you MUST call create_note or create_task with a title. For Mon–Fri or specific weekdays without using daily=true on a single task, use create_schedule_template (or weekday_preset monday_to_friday). Never say you created something unless the tool result is JSON with an "id" field or template list (success) or explicitly says queued for confirmation.',
-    'If the tool result says Unknown tool, queued for confirmation, or mutations disabled, report that to the user — do not claim success.',
-    'Never output raw JSON tool calls in the user-visible reply. Never refer to tools that do not exist (there is no get_task, get_note, or similar). Only use the tools provided in this session.',
-    'Never claim a delete completed until the user has confirmed it in the UI.',
-    'If mutations are disabled, explain that the user can enable "Allow AI to edit data" in Settings → Theme panel.',
+    'You are Jarvis, the in-app AI for NoteTasks (Pool, Schedule, Notes, Tasks, Completed, Jarvis tab, Settings). Be brief: default to 1–3 short sentences; expand only if asked.',
+    'Use tools for any data read/write; never guess ids. Before update/delete (or nested create), call list_notes and/or list_tasks unless you already have the correct id from this turn.',
+    'Notes: title + description; optional deadline (full datetime or HH:mm for daily). Tasks: title + target (number, default 1) + progress; same deadline rules. Nesting: parentId + parentType (note|task).',
+    'daily:true = same item every calendar day (Schedule daily). Mon–Fri / specific weekdays: use schedule templates (create_schedule_template, weekday_preset monday_to_friday), not one daily=true task.',
+    'To create a note or task you MUST call create_note or create_task with a title. Never say you created something unless the tool result has an "id" or template success, or explicitly says queued for confirmation.',
+    'If the tool result says Unknown tool, queued for confirmation, or mutations disabled, report that — do not claim success.',
+    'Never output raw JSON tool calls in chat. There is no get_task/get_note; only use tools provided in this session.',
+    'Never claim a delete completed until the user confirmed it in the Jarvis panel.',
+    'If mutations are disabled, say they can turn on Allow edits in Settings → Jarvis.',
     `Mutations currently ${mutationsEnabled ? 'ENABLED' : 'DISABLED'} for this user.`,
     timeLine,
     tzLine,
-    'For questions about what the app can do, call get_app_capabilities.',
-    'Keep replies concise unless the user asks for detail.',
+    'For full product rules, call get_app_capabilities.',
   ]
     .filter(Boolean)
     .join('\n');
@@ -139,7 +141,10 @@ async function ollamaChat(base, model, messages, tools) {
   try {
     res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...ollamaFetchExtraHeaders(base),
+      },
       body: JSON.stringify({
         model,
         messages,
@@ -184,9 +189,13 @@ async function ollamaChat(base, model, messages, tools) {
  * @param {string} [opts.clientIsoTime]
  * @param {number} [opts.tzOffsetMinutes]
  * @param {{ ai_agent_mutations_enabled?: boolean }} [opts.settingsRow]
+ * @param {string} [opts.ollamaBase] - resolved base URL (user setting or server env); falls back to env/localhost if omitted
  */
 export async function runAgentChat(opts) {
-  const base = ollamaBaseUrl();
+  const base =
+    typeof opts.ollamaBase === 'string' && opts.ollamaBase.trim()
+      ? opts.ollamaBase.trim().replace(/\/$/, '')
+      : fallbackOllamaBaseUrl();
   const model = ollamaModel();
 
   const { userId, clientIsoTime, tzOffsetMinutes, settingsRow } = opts;

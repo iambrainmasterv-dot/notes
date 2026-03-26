@@ -43,6 +43,18 @@ export const api = {
 
   me: () => request<{ user: { id: string; email: string } }>('/auth/me'),
 
+  forgotPassword: (email: string) =>
+    request<{ ok: boolean; message?: string }>('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
+  resetPassword: (token: string, password: string) =>
+    request<{ ok: boolean }>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    }),
+
   // Notes
   getNotes: () => request<Record<string, unknown>[]>('/notes'),
   createNote: (data: Record<string, unknown>) =>
@@ -125,7 +137,15 @@ export const api = {
   importData: (data: Record<string, unknown>) =>
     request<{ ok: boolean }>('/import', { method: 'POST', body: JSON.stringify(data) }),
 
-  // AI Assistant
+  // Jarvis (local Ollama)
+  getAssistantAvailability: async () => {
+    try {
+      return await request<{ available: boolean }>('/ai/availability');
+    } catch {
+      return { available: false };
+    }
+  },
+
   aiChat: (body: {
     messages: { role: 'user' | 'assistant'; content: string }[];
     clientIsoTime?: string;

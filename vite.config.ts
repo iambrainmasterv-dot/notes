@@ -13,6 +13,8 @@ export default defineConfig({
   },
   plugins: [react()],
   server: {
+    // Leading dot = allow subdomains (Vite). localtunnel, Cloudflare quick, ngrok dev fronts.
+    allowedHosts: ['.loca.lt', '.trycloudflare.com', '.ngrok-free.app', '.ngrok-free.dev', '.ngrok.io'],
     proxy: {
       '/api': {
         target: 'http://localhost:3001',

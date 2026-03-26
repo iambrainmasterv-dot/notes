@@ -47,7 +47,7 @@ export function AssistantPanel({
     <div className={`assistant-panel ${compact ? 'assistant-panel--compact' : ''}`}>
       {!mutationsEnabled && (
         <p className="assistant-banner">
-          AI cannot change your notes or tasks while <strong>Allow AI to edit data</strong> is off in Settings.
+          Jarvis cannot change your notes or tasks while <strong>Allow edits</strong> is off in Settings (Jarvis section).
         </p>
       )}
 
@@ -112,19 +112,19 @@ export function AssistantPanel({
       <div className="assistant-messages">
         {messages.length === 0 && !loading && (
           <p className="assistant-empty">
-            Ask about your notes and tasks, or say e.g. “create a note …” / “write a task …”. If something needs a tap,
-            you’ll see <strong>Confirm changes</strong> above the chat. Deletes always need confirmation here.
+            Ask Jarvis about your notes and tasks, or say e.g. “create a note …” / “write a task …”. If something needs a
+            tap, you’ll see <strong>Confirm changes</strong> above the chat. Deletes always need confirmation here.
           </p>
         )}
         {messages.map((m, i) => (
           <div key={i} className={`assistant-bubble assistant-bubble--${m.role}`}>
-            <div className="assistant-bubble-label">{m.role === 'user' ? 'You' : 'Assistant'}</div>
+            <div className="assistant-bubble-label">{m.role === 'user' ? 'You' : 'Jarvis'}</div>
             <div className="assistant-bubble-text">{m.content}</div>
           </div>
         ))}
         {loading && (
           <div className="assistant-bubble assistant-bubble--assistant">
-            <div className="assistant-bubble-label">Assistant</div>
+            <div className="assistant-bubble-label">Jarvis</div>
             <div className="assistant-bubble-text assistant-typing">Thinking…</div>
           </div>
         )}
@@ -135,7 +135,7 @@ export function AssistantPanel({
         <textarea
           ref={inputRef}
           className="input assistant-input"
-          placeholder="Message the assistant…"
+          placeholder="Message Jarvis…"
           rows={compact ? 2 : 3}
           disabled={loading}
           onKeyDown={(e) => {

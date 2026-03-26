@@ -371,7 +371,7 @@ export async function runAgentTool(name, args, ctx) {
           );
           return {
             resultText:
-              'This create is queued for user confirmation (intent was not explicit). Tell them to confirm in the Assistant panel.',
+              'This create is queued for user confirmation (intent was not explicit). Tell them to confirm in the Jarvis panel.',
             workContext,
           };
         }
@@ -438,7 +438,7 @@ export async function runAgentTool(name, args, ctx) {
             );
             return {
               resultText:
-                'Mon–Fri recurring tasks use schedule templates (one per weekday), not a single daily task. This is queued — ask the user to tap Apply in the Assistant panel.',
+                'Mon–Fri recurring tasks use schedule templates (one per weekday), not a single daily task. This is queued — ask the user to tap Apply in the Jarvis panel.',
               workContext,
             };
           }
@@ -482,7 +482,7 @@ export async function runAgentTool(name, args, ctx) {
           pushPending(pendingMutations, 'create_task', payload, `Create task "${title}"${daily ? ' (daily)' : ''}`);
           return {
             resultText:
-              'This create is queued for user confirmation (intent was not explicit). Tell them to confirm in the Assistant panel.',
+              'This create is queued for user confirmation (intent was not explicit). Tell them to confirm in the Jarvis panel.',
             workContext,
           };
         }
@@ -531,7 +531,7 @@ export async function runAgentTool(name, args, ctx) {
           pushPending(pendingMutations, 'update_note', { id, ...patch }, `Update note ${id}`);
           return {
             resultText:
-              'Update queued for user confirmation (intent was not explicit). Ask them to confirm in the Assistant panel.',
+              'Update queued for user confirmation (intent was not explicit). Ask them to confirm in the Jarvis panel.',
             workContext,
           };
         }
@@ -584,7 +584,7 @@ export async function runAgentTool(name, args, ctx) {
           pushPending(pendingMutations, 'update_task', { id, ...patch }, `Update task ${id}`);
           return {
             resultText:
-              'Update queued for user confirmation (intent was not explicit). Ask them to confirm in the Assistant panel.',
+              'Update queued for user confirmation (intent was not explicit). Ask them to confirm in the Jarvis panel.',
             workContext,
           };
         }
@@ -622,7 +622,7 @@ export async function runAgentTool(name, args, ctx) {
         pushPending(pendingConfirmations, 'delete_note', { id, cascade }, summary);
         return {
           resultText:
-            'Deletion requires explicit user confirmation in the app. It is NOT done yet. Briefly list what will be removed and ask them to confirm in the Assistant panel.',
+            'Deletion requires explicit user confirmation in the app. It is NOT done yet. Briefly list what will be removed and ask them to confirm in the Jarvis panel.',
           workContext,
         };
       }
@@ -645,7 +645,7 @@ export async function runAgentTool(name, args, ctx) {
         pushPending(pendingConfirmations, 'delete_task', { id, cascade }, summary);
         return {
           resultText:
-            'Deletion requires explicit user confirmation in the app. It is NOT done yet. Briefly list what will be removed and ask them to confirm in the Assistant panel.',
+            'Deletion requires explicit user confirmation in the app. It is NOT done yet. Briefly list what will be removed and ask them to confirm in the Jarvis panel.',
           workContext,
         };
       }
@@ -690,7 +690,7 @@ export async function runAgentTool(name, args, ctx) {
             );
             return {
               resultText:
-                'This template create is queued for user confirmation. Ask them to tap Apply in the Assistant panel.',
+                'This template create is queued for user confirmation. Ask them to tap Apply in the Jarvis panel.',
               workContext,
             };
           }
@@ -721,7 +721,7 @@ export async function runAgentTool(name, args, ctx) {
           pushPending(pendingMutations, 'update_schedule_template', { ...args }, `Update schedule template ${tid}`);
           return {
             resultText:
-              'Update queued for user confirmation. Ask them to tap Apply in the Assistant panel.',
+              'Update queued for user confirmation. Ask them to tap Apply in the Jarvis panel.',
             workContext,
           };
         }
@@ -787,7 +787,7 @@ export async function runAgentTool(name, args, ctx) {
         pushPending(pendingConfirmations, 'delete_schedule_template', { id: tid }, summary);
         return {
           resultText:
-            'Template deletion requires user confirmation in the app. It is NOT deleted yet. Ask them to confirm in the Assistant panel.',
+            'Template deletion requires user confirmation in the app. It is NOT deleted yet. Ask them to confirm in the Jarvis panel.',
           workContext,
         };
       }
@@ -1058,7 +1058,7 @@ export const AGENT_TOOL_DEFINITIONS = [
     type: 'function',
     function: {
       name: 'get_app_capabilities',
-      description: 'Return authoritative markdown describing app tabs, data model, assistant rules, and settings.',
+      description: 'Return authoritative markdown describing app tabs, data model, Jarvis rules, and settings.',
       parameters: { type: 'object', properties: {} },
     },
   },
