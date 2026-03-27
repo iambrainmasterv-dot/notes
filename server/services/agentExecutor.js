@@ -4,6 +4,7 @@ import { collectDescendantIds } from './agentHierarchy.js';
 import { mergeWorkContext, toolWorkContext, userWantsMondayThroughFridaySchedule } from './intentPolicy.js';
 import { normalizeDeadlineForStorage, parseTimePhraseToHm } from './timeParse.js';
 import { APP_CAPABILITIES_MARKDOWN } from './appCapabilities.js';
+import { pushAgentUndo, formatUndoListForAgent, undoAgentActions } from './agentUndoStack.js';
 
 function summarizeNote(n) {
   return {
@@ -41,6 +42,18 @@ async function loadUserGraph(userId) {
   return { notes: notesRes.rows, tasks: tasksRes.rows };
 }
 
+async function loadFullNotesTasksSnapshot(userId, noteIds, taskIds) {
+  const n = noteIds?.length ? noteIds : [];
+  const t = taskIds?.length ? taskIds : [];
+  const { rows: notes } = n.length
+    ? await pool.query('SELECT * FROM notes WHERE user_id = $1 AND id = ANY($2::uuid[])', [userId, n])
+    : { rows: [] };
+  const { rows: tasks } = t.length
+    ? await pool.query('SELECT * FROM tasks WHERE user_id = $1 AND id = ANY($2::uuid[])', [userId, t])
+    : { rows: [] };
+  return { notes, tasks };
+}
+
 async function assertNoteOwned(userId, id) {
   const { rows } = await pool.query('SELECT * FROM notes WHERE id = $1 AND user_id = $2', [id, userId]);
   return rows[0] || null;
@@ -70,12 +83,6 @@ async function deleteNoteAndTaskIds(userId, sets) {
   if (sets.noteIds.length) {
     await pool.query('DELETE FROM notes WHERE id = ANY($1::uuid[]) AND user_id = $2', [sets.noteIds, userId]);
   }
-}
-
-function pushPending(arr, tool, args, summary) {
-  const id = randomUUID();
-  arr.push({ id, tool, arguments: args, summary });
-  return id;
 }
 
 /** @param {{ dirty?: { notes: boolean; tasks: boolean; templates: boolean } }} ctx */
@@ -293,15 +300,7 @@ function enrichScheduleTemplateArgs(args, lastUserMessage) {
  * @returns {{ resultText: string, workContext: string | null }}
  */
 export async function runAgentTool(name, args, ctx) {
-  const {
-    userId,
-    mutationsEnabled,
-    clearMutationIntent,
-    pendingConfirmations,
-    pendingMutations,
-    tzOffsetMinutes,
-    lastUserMessage = '',
-  } = ctx;
+  const { userId, mutationsEnabled, tzOffsetMinutes, lastUserMessage = '' } = ctx;
 
   let workContext = null;
   const setCtx = (toolName, a) => {
@@ -312,6 +311,33 @@ export async function runAgentTool(name, args, ctx) {
     switch (name) {
       case 'get_app_capabilities': {
         return { resultText: APP_CAPABILITIES_MARKDOWN, workContext: null };
+      }
+
+      case 'list_agent_undo': {
+        const list = formatUndoListForAgent(userId, 15);
+        return {
+          resultText: JSON.stringify({
+            count: list.length,
+            recent_newest_first: list,
+            hint: 'Call undo_agent_action with count:1 to reverse the most recent change.',
+          }),
+          workContext: null,
+        };
+      }
+
+      case 'undo_agent_action': {
+        if (!mutationsEnabled) {
+          return { resultText: 'Mutations are disabled; cannot undo.', workContext: null };
+        }
+        const raw = args?.count ?? args?.steps ?? 1;
+        const count = Math.min(5, Math.max(1, Number(raw) || 1));
+        const res = await undoAgentActions(userId, count);
+        if (ctx?.dirty && res.results?.some((r) => r.ok)) {
+          ctx.dirty.notes = true;
+          ctx.dirty.tasks = true;
+          ctx.dirty.templates = true;
+        }
+        return { resultText: JSON.stringify(res), workContext: null };
       }
 
       case 'list_notes': {
@@ -354,27 +380,6 @@ export async function runAgentTool(name, args, ctx) {
         deadline = normalizeDeadlineForStorage(deadline, daily);
         const parent_id = args?.parent_id || null;
         const parent_type = args?.parent_type ?? (parent_id ? 'note' : null);
-        const payload = {
-          title,
-          description,
-          daily,
-          deadline,
-          parent_id,
-          parent_type,
-        };
-        if (!clearMutationIntent) {
-          pushPending(
-            pendingMutations,
-            'create_note',
-            payload,
-            `Create note "${title}"${daily ? ' (daily)' : ''}`,
-          );
-          return {
-            resultText:
-              'This create is queued for user confirmation (intent was not explicit). Tell them to confirm in the Jarvis panel.',
-            workContext,
-          };
-        }
         const id = randomUUID();
         const created_at = new Date().toISOString();
         const { rows } = await pool.query(
@@ -383,6 +388,12 @@ export async function runAgentTool(name, args, ctx) {
           [id, userId, title, description, created_at, deadline, parent_id, parent_type, daily],
         );
         markNotesDirty(ctx);
+        pushAgentUndo(userId, {
+          type: 'delete_items',
+          label: `Created note "${title}"`,
+          noteIds: [id],
+          taskIds: [],
+        });
         return { resultText: JSON.stringify(summarizeNote(rows[0])), workContext };
       }
 
@@ -429,22 +440,17 @@ export async function runAgentTool(name, args, ctx) {
               workContext,
             };
           }
-          if (!clearMutationIntent) {
-            pushPending(
-              pendingMutations,
-              'create_schedule_template',
-              tplArgs,
-              `Create Mon–Fri schedule templates for "${title}"`,
-            );
-            return {
-              resultText:
-                'Mon–Fri recurring tasks use schedule templates (one per weekday), not a single daily task. This is queued — ask the user to tap Apply in the Jarvis panel.',
-              workContext,
-            };
-          }
           try {
             const created = await executeScheduleTemplateCreates(userId, tplArgs);
             markTemplatesDirty(ctx);
+            const templateIds = created.map((c) => c.id).filter(Boolean);
+            if (templateIds.length) {
+              pushAgentUndo(userId, {
+                type: 'delete_template_ids',
+                label: `Created Mon–Fri templates for "${title}"`,
+                templateIds,
+              });
+            }
             return {
               resultText: JSON.stringify(created),
               workContext,
@@ -468,24 +474,6 @@ export async function runAgentTool(name, args, ctx) {
         const progress = Number(args?.progress) >= 0 ? Number(args.progress) : 0;
         const parent_id = args?.parent_id || null;
         const parent_type = args?.parent_type ?? (parent_id ? 'note' : null);
-        const payload = {
-          title,
-          description,
-          daily,
-          deadline,
-          target,
-          progress,
-          parent_id,
-          parent_type,
-        };
-        if (!clearMutationIntent) {
-          pushPending(pendingMutations, 'create_task', payload, `Create task "${title}"${daily ? ' (daily)' : ''}`);
-          return {
-            resultText:
-              'This create is queued for user confirmation (intent was not explicit). Tell them to confirm in the Jarvis panel.',
-            workContext,
-          };
-        }
         const id = randomUUID();
         const created_at = new Date().toISOString();
         const { rows } = await pool.query(
@@ -494,6 +482,12 @@ export async function runAgentTool(name, args, ctx) {
           [id, userId, title, description, created_at, deadline, target, progress, daily, parent_id, parent_type],
         );
         markTasksDirty(ctx);
+        pushAgentUndo(userId, {
+          type: 'delete_items',
+          label: `Created task "${title}"`,
+          noteIds: [],
+          taskIds: [id],
+        });
         return { resultText: JSON.stringify(summarizeTask(rows[0])), workContext };
       }
 
@@ -527,14 +521,7 @@ export async function runAgentTool(name, args, ctx) {
           patch.deadline = normalizeDeadlineForStorage(String(patch.deadline), d);
         }
         if (Object.keys(patch).length === 0) return { resultText: 'No valid fields to update', workContext };
-        if (!clearMutationIntent) {
-          pushPending(pendingMutations, 'update_note', { id, ...patch }, `Update note ${id}`);
-          return {
-            resultText:
-              'Update queued for user confirmation (intent was not explicit). Ask them to confirm in the Jarvis panel.',
-            workContext,
-          };
-        }
+        const before = structuredClone(row);
         const sets = [];
         const vals = [];
         let i = 1;
@@ -548,6 +535,11 @@ export async function runAgentTool(name, args, ctx) {
           vals,
         );
         markNotesDirty(ctx);
+        pushAgentUndo(userId, {
+          type: 'restore_note_row',
+          label: `Updated note "${before.title || id}"`,
+          before,
+        });
         return { resultText: JSON.stringify(summarizeNote(rows[0])), workContext };
       }
 
@@ -580,14 +572,7 @@ export async function runAgentTool(name, args, ctx) {
           patch.deadline = normalizeDeadlineForStorage(String(patch.deadline), d);
         }
         if (Object.keys(patch).length === 0) return { resultText: 'No valid fields to update', workContext };
-        if (!clearMutationIntent) {
-          pushPending(pendingMutations, 'update_task', { id, ...patch }, `Update task ${id}`);
-          return {
-            resultText:
-              'Update queued for user confirmation (intent was not explicit). Ask them to confirm in the Jarvis panel.',
-            workContext,
-          };
-        }
+        const before = structuredClone(row);
         const sets = [];
         const vals = [];
         let i = 1;
@@ -601,6 +586,11 @@ export async function runAgentTool(name, args, ctx) {
           vals,
         );
         markTasksDirty(ctx);
+        pushAgentUndo(userId, {
+          type: 'restore_task_row',
+          label: `Updated task "${before.title || id}"`,
+          before,
+        });
         return { resultText: JSON.stringify(summarizeTask(rows[0])), workContext };
       }
 
@@ -616,13 +606,24 @@ export async function runAgentTool(name, args, ctx) {
         const cascade = args?.cascade !== false;
         const { notes, tasks } = await loadUserGraph(userId);
         const sets = cascade ? cascadeSets('note', id, notes, tasks) : { noteIds: [id], taskIds: [] };
-        const summary = cascade
-          ? `Delete note "${row.title}" and its subtree (${sets.noteIds.length} notes, ${sets.taskIds.length} tasks)`
-          : `Delete note "${row.title}"`;
-        pushPending(pendingConfirmations, 'delete_note', { id, cascade }, summary);
+        const snapshot = await loadFullNotesTasksSnapshot(userId, sets.noteIds, sets.taskIds);
+        await deleteNoteAndTaskIds(userId, sets);
+        markNotesDirty(ctx);
+        markTasksDirty(ctx);
+        pushAgentUndo(userId, {
+          type: 'restore_graph',
+          label: cascade
+            ? `Deleted note "${row.title}" and subtree (${sets.noteIds.length} notes, ${sets.taskIds.length} tasks)`
+            : `Deleted note "${row.title}"`,
+          notes: snapshot.notes,
+          tasks: snapshot.tasks,
+        });
         return {
-          resultText:
-            'Deletion requires explicit user confirmation in the app. It is NOT done yet. Briefly list what will be removed and ask them to confirm in the Jarvis panel.',
+          resultText: JSON.stringify({
+            ok: true,
+            deleted: sets,
+            undo: 'Reversible: call undo_agent_action if the user wants this back.',
+          }),
           workContext,
         };
       }
@@ -639,13 +640,24 @@ export async function runAgentTool(name, args, ctx) {
         const cascade = args?.cascade !== false;
         const { notes, tasks } = await loadUserGraph(userId);
         const sets = cascade ? cascadeSets('task', id, notes, tasks) : { noteIds: [], taskIds: [id] };
-        const summary = cascade
-          ? `Delete task "${row.title}" and its subtree (${sets.noteIds.length} notes, ${sets.taskIds.length} tasks)`
-          : `Delete task "${row.title}"`;
-        pushPending(pendingConfirmations, 'delete_task', { id, cascade }, summary);
+        const snapshot = await loadFullNotesTasksSnapshot(userId, sets.noteIds, sets.taskIds);
+        await deleteNoteAndTaskIds(userId, sets);
+        markNotesDirty(ctx);
+        markTasksDirty(ctx);
+        pushAgentUndo(userId, {
+          type: 'restore_graph',
+          label: cascade
+            ? `Deleted task "${row.title}" and subtree (${sets.noteIds.length} notes, ${sets.taskIds.length} tasks)`
+            : `Deleted task "${row.title}"`,
+          notes: snapshot.notes,
+          tasks: snapshot.tasks,
+        });
         return {
-          resultText:
-            'Deletion requires explicit user confirmation in the app. It is NOT done yet. Briefly list what will be removed and ask them to confirm in the Jarvis panel.',
+          resultText: JSON.stringify({
+            ok: true,
+            deleted: sets,
+            undo: 'Reversible: call undo_agent_action if the user wants this back.',
+          }),
           workContext,
         };
       }
@@ -681,21 +693,16 @@ export async function runAgentTool(name, args, ctx) {
           };
         }
         try {
-          if (!clearMutationIntent) {
-            pushPending(
-              pendingMutations,
-              'create_schedule_template',
-              { ...argsEffective },
-              `Create schedule template(s) "${String(argsEffective?.name || '').trim() || 'Template'}"`,
-            );
-            return {
-              resultText:
-                'This template create is queued for user confirmation. Ask them to tap Apply in the Jarvis panel.',
-              workContext,
-            };
-          }
           const created = await executeScheduleTemplateCreates(userId, argsEffective);
           markTemplatesDirty(ctx);
+          const templateIds = created.map((c) => c.id).filter(Boolean);
+          if (templateIds.length) {
+            pushAgentUndo(userId, {
+              type: 'delete_template_ids',
+              label: `Created schedule template(s) "${String(argsEffective?.name || '').trim() || 'Template'}"`,
+              templateIds,
+            });
+          }
           return {
             resultText: JSON.stringify(created),
             workContext,
@@ -717,14 +724,11 @@ export async function runAgentTool(name, args, ctx) {
           [tid, userId],
         );
         if (!own[0]) return { resultText: 'Template not found', workContext };
-        if (!clearMutationIntent) {
-          pushPending(pendingMutations, 'update_schedule_template', { ...args }, `Update schedule template ${tid}`);
-          return {
-            resultText:
-              'Update queued for user confirmation. Ask them to tap Apply in the Jarvis panel.',
-            workContext,
-          };
-        }
+        const tplBefore = structuredClone(own[0]);
+        const { rows: itemsBefore } = await pool.query(
+          'SELECT * FROM schedule_template_items WHERE template_id = $1 ORDER BY sort_order',
+          [tid],
+        );
         try {
           const meta = {};
           for (const key of ['name', 'description', 'schedule_kind', 'schedule_value']) {
@@ -762,6 +766,12 @@ export async function runAgentTool(name, args, ctx) {
           );
           const { rows: tplRows } = await pool.query('SELECT * FROM schedule_templates WHERE id = $1', [tid]);
           markTemplatesDirty(ctx);
+          pushAgentUndo(userId, {
+            type: 'restore_schedule_template',
+            label: `Updated template "${tplBefore.name || tid}"`,
+            template: tplBefore,
+            items: itemsBefore.map((it) => structuredClone(it)),
+          });
           return {
             resultText: JSON.stringify(summarizeScheduleTemplateRow(tplRows[0], items2)),
             workContext,
@@ -783,11 +793,25 @@ export async function runAgentTool(name, args, ctx) {
           [tid, userId],
         );
         if (!own[0]) return { resultText: 'Template not found', workContext };
-        const summary = `Delete schedule template "${own[0].name || tid}"`;
-        pushPending(pendingConfirmations, 'delete_schedule_template', { id: tid }, summary);
+        const tplRow = own[0];
+        const { rows: items } = await pool.query(
+          'SELECT * FROM schedule_template_items WHERE template_id = $1 ORDER BY sort_order',
+          [tid],
+        );
+        await pool.query('DELETE FROM schedule_templates WHERE id = $1 AND user_id = $2', [tid, userId]);
+        markTemplatesDirty(ctx);
+        pushAgentUndo(userId, {
+          type: 'restore_schedule_template',
+          label: `Deleted template "${tplRow.name || tid}"`,
+          template: structuredClone(tplRow),
+          items: items.map((it) => structuredClone(it)),
+        });
         return {
-          resultText:
-            'Template deletion requires user confirmation in the app. It is NOT deleted yet. Ask them to confirm in the Jarvis panel.',
+          resultText: JSON.stringify({
+            ok: true,
+            deleted_template_id: tid,
+            undo: 'Reversible: call undo_agent_action to restore this template.',
+          }),
           workContext,
         };
       }
@@ -1058,8 +1082,32 @@ export const AGENT_TOOL_DEFINITIONS = [
     type: 'function',
     function: {
       name: 'get_app_capabilities',
-      description: 'Return authoritative markdown describing app tabs, data model, Jarvis rules, and settings.',
+      description:
+        'Return authoritative markdown for NoteTasks tabs, data model, deadlines, schedule templates, and mutation rules. Call when unsure about app behavior; not needed for purely general conversation.',
       parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_agent_undo',
+      description:
+        'List recent Jarvis mutations that can be undone (newest first). Use when the user asks to undo, revert, or restore something.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'undo_agent_action',
+      description:
+        'Undo recent Jarvis mutations (deletes, creates, updates, templates). Default count is 1 (most recent). Max 5 per call.',
+      parameters: {
+        type: 'object',
+        properties: {
+          count: { type: 'number', description: 'How many steps to undo, starting from the most recent (default 1, max 5).' },
+        },
+      },
     },
   },
   {
@@ -1259,7 +1307,8 @@ export const AGENT_TOOL_DEFINITIONS = [
     type: 'function',
     function: {
       name: 'delete_schedule_template',
-      description: 'Request deletion of a schedule template. Always requires user confirmation in the UI.',
+      description:
+        'Delete a schedule template immediately (items cascade). Reversible via undo_agent_action while the undo stack still holds the snapshot.',
       parameters: {
         type: 'object',
         properties: { id: { type: 'string' } },
@@ -1271,7 +1320,8 @@ export const AGENT_TOOL_DEFINITIONS = [
     type: 'function',
     function: {
       name: 'delete_note',
-      description: 'Request deletion of a note. Always requires user confirmation in the UI; cascade deletes subtree by default.',
+      description:
+        'Delete a note immediately; cascade (default true) removes its subtree. Reversible via undo_agent_action.',
       parameters: {
         type: 'object',
         properties: {
@@ -1286,7 +1336,7 @@ export const AGENT_TOOL_DEFINITIONS = [
     type: 'function',
     function: {
       name: 'delete_task',
-      description: 'Request deletion of a task. Always requires user confirmation; cascade default true.',
+      description: 'Delete a task immediately; cascade default true. Reversible via undo_agent_action.',
       parameters: {
         type: 'object',
         properties: {

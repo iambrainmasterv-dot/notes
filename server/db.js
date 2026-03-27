@@ -144,10 +144,6 @@ export async function initDb() {
     )
     .catch(() => {});
 
-  await pool
-    .query('ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS ollama_base_url TEXT')
-    .catch(() => {});
-
   await pool.query(`
     CREATE TABLE IF NOT EXISTS password_reset_tokens (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -348,6 +348,17 @@ body {
   color: var(--text-secondary);
 }
 
+.assistant-cloud-hint {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--warning-border, #f59e0b);
+  background: var(--warning-bg, #fffbeb);
+  color: var(--warning-fg, #92400e);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
 .assistant-setup-title {
   margin: 0 0 8px;
   font-size: 0.95rem;

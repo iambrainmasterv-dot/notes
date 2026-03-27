@@ -143,10 +143,10 @@ export const api = {
       return await request<{
         available: boolean;
         suggestedModel: string;
-        usingLocalFallback: boolean;
+        cloudLoopbackHint?: string;
       }>('/ai/availability');
     } catch {
-      return { available: false, suggestedModel: 'llama3.2', usingLocalFallback: false };
+      return { available: false, suggestedModel: 'llama3.2' };
     }
   },
 

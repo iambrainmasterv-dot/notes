@@ -6,44 +6,54 @@ import { ollamaFetchExtraHeaders } from '../services/ollamaTunnelHeaders.js';
 
 const router = Router();
 
-const LOCAL_OLLAMA_DEFAULT = 'http://127.0.0.1:11434';
+function isLikelyHostedDeploy() {
+  return Boolean(
+    process.env.RAILWAY_ENVIRONMENT ||
+      process.env.RAILWAY_SERVICE_NAME ||
+      process.env.FLY_APP_NAME ||
+      process.env.RENDER ||
+      process.env.VERCEL ||
+      process.env.HEROKU_APP_NAME,
+  );
+}
+
+/** @param {string} base */
+function ollamaBaseIsLoopback(base) {
+  if (!base || typeof base !== 'string') return false;
+  try {
+    const u = new URL(base.includes('://') ? base : `http://${base}`);
+    const h = u.hostname.toLowerCase();
+    return h === 'localhost' || h === '127.0.0.1' || h === '::1' || h === '[::1]';
+  } catch {
+    return false;
+  }
+}
+
+/** @param {string} base */
+function cloudLoopbackHint(base) {
+  if (!isLikelyHostedDeploy()) return undefined;
+  if (ollamaBaseIsLoopback(base)) {
+    return 'OLLAMA_BASE_URL is localhost/127.0.0.1. From a hosted API that refers to the cloud server, not your PC. Set OLLAMA_BASE_URL to your tunnel https URL (ngrok, etc.) on Railway and restart.';
+  }
+  return undefined;
+}
 
 function suggestedOllamaModel() {
   const m = (process.env.OLLAMA_MODEL || 'llama3.2').trim();
   return m || 'llama3.2';
 }
 
-/**
- * @param {string} userId
- * @returns {Promise<{ base: string, usingLocalFallback: boolean }>}
- */
-async function getOllamaResolution(userId) {
-  const { rows } = await pool.query(
-    'SELECT ollama_base_url FROM user_settings WHERE user_id = $1',
-    [userId],
-  );
-  const fromDb = rows[0]?.ollama_base_url;
-  if (typeof fromDb === 'string' && fromDb.trim()) {
-    return { base: fromDb.trim().replace(/\/$/, ''), usingLocalFallback: false };
-  }
+function getOllamaBaseFromEnv() {
   const env = process.env.OLLAMA_BASE_URL?.trim();
-  if (env) return { base: env.replace(/\/$/, ''), usingLocalFallback: false };
-  if (process.env.OLLAMA_ALLOW_LOCAL_FALLBACK === 'true') {
-    return { base: LOCAL_OLLAMA_DEFAULT, usingLocalFallback: true };
-  }
-  return { base: '', usingLocalFallback: false };
-}
-
-async function resolveOllamaBase(userId) {
-  const { base } = await getOllamaResolution(userId);
-  return base;
+  return env ? env.replace(/\/$/, '') : '';
 }
 
 router.get('/availability', async (req, res) => {
   const suggestedModel = suggestedOllamaModel();
+  const base = getOllamaBaseFromEnv();
+  const hint = cloudLoopbackHint(base);
+  const meta = () => ({ suggestedModel, cloudLoopbackHint: hint });
   try {
-    const { base, usingLocalFallback } = await getOllamaResolution(req.userId);
-    const meta = () => ({ suggestedModel, usingLocalFallback });
     if (!base) {
       return res.json({ available: false, ...meta() });
     }
@@ -63,8 +73,7 @@ router.get('/availability', async (req, res) => {
     return res.json({ available: true, ...meta() });
   } catch (e) {
     console.error('GET /api/ai/availability', e?.message || e);
-    const { usingLocalFallback } = await getOllamaResolution(req.userId);
-    return res.json({ available: false, suggestedModel, usingLocalFallback });
+    return res.json({ available: false, suggestedModel, cloudLoopbackHint: hint });
   }
 });
 
@@ -79,11 +88,10 @@ async function loadMutationFlag(userId) {
 
 router.post('/chat', async (req, res) => {
   try {
-    const ollamaBase = await resolveOllamaBase(req.userId);
+    const ollamaBase = getOllamaBaseFromEnv();
     if (!ollamaBase) {
       return res.status(503).json({
-        error:
-          'No Ollama URL configured. Add it in Settings → Jarvis (Ollama base URL), set OLLAMA_BASE_URL on the server, or enable OLLAMA_ALLOW_LOCAL_FALLBACK=true for same-machine Ollama.',
+        error: 'Jarvis is not configured. Set OLLAMA_BASE_URL in the server environment (e.g. your Ollama URL or ngrok https origin), then restart the API.',
       });
     }
     const settingsRow = await loadMutationFlag(req.userId);

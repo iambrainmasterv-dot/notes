@@ -11,8 +11,8 @@ export function AssistantPage(props: Props) {
       <header className="page-header">
         <h1 className="page-title">Jarvis</h1>
         <p className="page-subtitle" style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-          Jarvis runs on local Ollama (no API key). Session-only chat; data changes follow your Settings and confirmation
-          rules.
+          Jarvis runs on Ollama (no API key). Session-only chat; with <strong>Allow edits</strong> on, changes apply
+          immediately and Jarvis can undo recent actions on request.
         </p>
       </header>
       <AssistantPanel {...props} compact={false} />

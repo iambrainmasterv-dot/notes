@@ -1,14 +1,16 @@
 import { AGENT_TOOL_DEFINITIONS, runAgentTool } from './agentExecutor.js';
-import { isClearMutationIntent, mergeWorkContext } from './intentPolicy.js';
+import { mergeWorkContext } from './intentPolicy.js';
 import { ollamaFetchExtraHeaders } from './ollamaTunnelHeaders.js';
 
-const MAX_CLIENT_MESSAGES = 40;
-const MAX_MESSAGE_CHARS = 12000;
-const MAX_TOOL_STEPS = 12;
+const MAX_CLIENT_MESSAGES = 48;
+const MAX_MESSAGE_CHARS = 16000;
+const MAX_TOOL_STEPS = 20;
 
 /** Must match tool `function.name` values in agentExecutor */
 const CANONICAL_TOOLS = [
   'get_app_capabilities',
+  'list_agent_undo',
+  'undo_agent_action',
   'list_notes',
   'list_tasks',
   'create_note',
@@ -32,11 +34,6 @@ function normalizeAgentToolName(raw) {
     if (canonical.replace(/_/g, '') === compact) return canonical;
   }
   return s;
-}
-
-function fallbackOllamaBaseUrl() {
-  const raw = process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434';
-  return String(raw).replace(/\/$/, '');
 }
 
 function ollamaModel() {
@@ -66,19 +63,27 @@ function buildSystemPrompt({ clientIsoTime, tzOffsetMinutes, mutationsEnabled })
       : '';
 
   return [
-    'You are Jarvis, the in-app AI for NoteTasks (Pool, Schedule, Notes, Tasks, Completed, Jarvis tab, Settings). Be brief: default to 1–3 short sentences; expand only if asked.',
-    'Use tools for any data read/write; never guess ids. Before update/delete (or nested create), call list_notes and/or list_tasks unless you already have the correct id from this turn.',
-    'Notes: title + description; optional deadline (full datetime or HH:mm for daily). Tasks: title + target (number, default 1) + progress; same deadline rules. Nesting: parentId + parentType (note|task).',
-    'daily:true = same item every calendar day (Schedule daily). Mon–Fri / specific weekdays: use schedule templates (create_schedule_template, weekday_preset monday_to_friday), not one daily=true task.',
-    'To create a note or task you MUST call create_note or create_task with a title. Never say you created something unless the tool result has an "id" or template success, or explicitly says queued for confirmation.',
-    'If the tool result says Unknown tool, queued for confirmation, or mutations disabled, report that — do not claim success.',
-    'Never output raw JSON tool calls in chat. There is no get_task/get_note; only use tools provided in this session.',
-    'Never claim a delete completed until the user confirmed it in the Jarvis panel.',
-    'If mutations are disabled, say they can turn on Allow edits in Settings → Jarvis.',
-    `Mutations currently ${mutationsEnabled ? 'ENABLED' : 'DISABLED'} for this user.`,
+    'You are **Jarvis** — a capable general-purpose assistant running inside **NoteTasks** (sidebar: Pool, Schedule, Notes, Tasks, Completed, Jarvis, Settings). Behave like a strong modern LLM: you can chat naturally, reason step by step, plan, brainstorm, explain technical topics, help with writing, translate, tutor, and discuss almost any subject. The only special capability you have beyond a normal chat model is **integrated access to this user’s real notes, tasks, and schedule** through tools.',
+    '',
+    '## Conversation style (match the user)',
+    '- **Language**: Reply in the same language the user writes in (including mixed or non‑English). If unclear, use their strongest language from the message or ask once.',
+    '- **Depth**: Match their intent — terse when they want speed; long-form outlines, tables, numbered plans, or detailed prose when they ask for depth, “explain like I’m five”, a workout plan, a syllabus, etc.',
+    '- **Personas & tone**: If they ask you to sound like someone, adopt a role, or mimic a style, lean into it clearly while staying accurate and safe. You are not a licensed clinician, lawyer, or therapist; give general information and suggest qualified professionals when health, legal, or crisis topics need it.',
+    '- **Fitness & workouts**: Build plans around the **fitness level they state** (beginner / intermediate / advanced). Include warm-up, progression, rest, and form reminders where helpful. This is general fitness guidance, not medical diagnosis or treatment.',
+    '',
+    '## NoteTasks data — tools (non‑negotiable)',
+    '- Use tools for **any** read or write of their in-app data. Never invent note/task/template IDs — call **list_notes** and/or **list_tasks** (and schedule template tools as needed) before update/delete/nested create unless you already received the correct id in this turn.',
+    '- **Notes**: title + description; optional deadline (full datetime or HH:mm for daily). **Tasks**: title + **target** (number, default 1) + **progress**; same deadline rules. **Nesting**: parent_id + parent_type (note|task) matching the parent item.',
+    '- **daily:true** = same item every calendar day (Schedule “Daily”). **Mon–Fri or chosen weekdays only** → use **schedule templates** (e.g. create_schedule_template, weekday_preset monday_to_friday), **not** a single daily=true item (that repeats every day including weekends).',
+    '- To create in the app you **must** call **create_note** or **create_task** (with a title). Never claim something was created unless the tool result includes an id or clear success.',
+    '- **No in-app confirmation step** — creates, updates, and deletes apply immediately when mutations are enabled. If the user regrets a change, call **list_agent_undo** then **undo_agent_action** (optional **count** 1–5). Deletes and other mutations are recorded so you can restore them.',
+    '- If a tool says unknown tool or mutations disabled — report that honestly; do not claim success.',
+    '- Do **not** paste raw JSON tool-call payloads as the user-visible reply. There is no get_note/get_task single-fetch tool; use list_* tools.',
+    '- If mutations are disabled: tell them they can enable **Allow edits** under Settings → Jarvis.',
+    `Mutations for this user are currently **${mutationsEnabled ? 'ENABLED' : 'DISABLED'}**.`,
     timeLine,
     tzLine,
-    'For full product rules, call get_app_capabilities.',
+    'For authoritative UI/tab/deadline/template rules, call **get_app_capabilities** when unsure.',
   ]
     .filter(Boolean)
     .join('\n');
@@ -189,19 +194,23 @@ async function ollamaChat(base, model, messages, tools) {
  * @param {string} [opts.clientIsoTime]
  * @param {number} [opts.tzOffsetMinutes]
  * @param {{ ai_agent_mutations_enabled?: boolean }} [opts.settingsRow]
- * @param {string} [opts.ollamaBase] - resolved base URL (user setting or server env); falls back to env/localhost if omitted
+ * @param {string} opts.ollamaBase - Ollama origin from OLLAMA_BASE_URL (server resolves before calling)
  */
 export async function runAgentChat(opts) {
   const base =
     typeof opts.ollamaBase === 'string' && opts.ollamaBase.trim()
       ? opts.ollamaBase.trim().replace(/\/$/, '')
-      : fallbackOllamaBaseUrl();
+      : '';
+  if (!base) {
+    const err = new Error('No Ollama base URL');
+    err.code = 'OLLAMA_UNAVAILABLE';
+    throw err;
+  }
   const model = ollamaModel();
 
   const { userId, clientIsoTime, tzOffsetMinutes, settingsRow } = opts;
   const history = sanitizeClientMessages(opts.messages);
   const lastUser = [...history].reverse().find((m) => m.role === 'user');
-  const clearMutationIntent = isClearMutationIntent(lastUser?.content || '');
   const mutationsEnabled = settingsRow?.ai_agent_mutations_enabled !== false;
 
   const pendingConfirmations = [];
@@ -266,9 +275,6 @@ export async function runAgentChat(opts) {
       const { resultText, workContext: wc } = await runAgentTool(name, args, {
         userId,
         mutationsEnabled,
-        clearMutationIntent,
-        pendingConfirmations,
-        pendingMutations,
         tzOffsetMinutes,
         dirty,
         lastUserMessage: lastUser?.content || '',
@@ -283,7 +289,8 @@ export async function runAgentChat(opts) {
   }
 
   return pack({
-    message: 'Stopped after too many tool steps; try a simpler request.',
+    message:
+      'I hit the step limit while using app tools. Ask again with a smaller change, or split listing vs editing into separate messages.',
     workContext,
   });
 }

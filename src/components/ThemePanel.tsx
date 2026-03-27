@@ -1,15 +1,9 @@
-import { useState, useEffect } from 'react';
 import type { ThemeMode, AccentColor, UIScale, FontScale, ThemeSettings } from '../types';
 import { APP_VERSION } from '../version';
-import { api } from '../api/client';
 
 interface Props {
   settings: ThemeSettings;
   onUpdate: (patch: Partial<ThemeSettings>) => void;
-  /** Merge settings into local state after a direct `api.updateSettings` call (avoids double PATCH). */
-  applySettingsLocal: (patch: Partial<ThemeSettings>) => void;
-  /** After saving Ollama URL, refresh Jarvis availability (e.g. re-probe tunnel). */
-  onOllamaUrlSaved?: () => void;
   /** True when this device still has notes/tasks in local storage (pre-account). */
   localImportAvailable: boolean;
   onImportLocal: () => void | Promise<void>;
@@ -54,50 +48,10 @@ const fontScales: { value: FontScale; label: string }[] = [
 export function ThemePanel({
   settings,
   onUpdate,
-  applySettingsLocal,
-  onOllamaUrlSaved,
   localImportAvailable,
   onImportLocal,
   onRerunTutorial,
 }: Props) {
-  const [ollamaDraft, setOllamaDraft] = useState(settings.ollamaBaseUrl ?? '');
-  const [ollamaErr, setOllamaErr] = useState<string | null>(null);
-  const [ollamaSaving, setOllamaSaving] = useState(false);
-
-  useEffect(() => {
-    setOllamaDraft(settings.ollamaBaseUrl ?? '');
-  }, [settings.ollamaBaseUrl]);
-
-  async function saveOllamaUrl() {
-    setOllamaErr(null);
-    setOllamaSaving(true);
-    try {
-      const v = ollamaDraft.trim();
-      await api.updateSettings({ ollama_base_url: v || null });
-      applySettingsLocal({ ollamaBaseUrl: v || null });
-      onOllamaUrlSaved?.();
-    } catch (e) {
-      setOllamaErr(e instanceof Error ? e.message : 'Could not save');
-    } finally {
-      setOllamaSaving(false);
-    }
-  }
-
-  async function clearOllamaUrl() {
-    setOllamaErr(null);
-    setOllamaSaving(true);
-    try {
-      await api.updateSettings({ ollama_base_url: null });
-      setOllamaDraft('');
-      applySettingsLocal({ ollamaBaseUrl: null });
-      onOllamaUrlSaved?.();
-    } catch (e) {
-      setOllamaErr(e instanceof Error ? e.message : 'Could not clear');
-    } finally {
-      setOllamaSaving(false);
-    }
-  }
-
   return (
     <div className="theme-panel">
       <div className="theme-section">
@@ -216,36 +170,9 @@ export function ThemePanel({
           </button>
         </div>
         <p className="theme-help" style={{ marginTop: 12 }}>
-          <strong>Ollama base URL</strong> (optional). Your tunnel origin, e.g.{' '}
-          <code style={{ fontSize: '0.85em' }}>https://….ngrok-free.app</code> — no path. Saved to your account for all
-          devices. If empty, the server uses <code>OLLAMA_BASE_URL</code> when set.
+          Jarvis uses Ollama. The API reads <code>OLLAMA_BASE_URL</code> on the server (e.g. ngrok https origin on Railway).
+          New to Jarvis? Open the Jarvis tab for setup steps.
         </p>
-        <input
-          type="url"
-          className="input"
-          placeholder="https://your-tunnel.example.com"
-          value={ollamaDraft}
-          onChange={(e) => setOllamaDraft(e.target.value)}
-          disabled={ollamaSaving}
-          autoComplete="off"
-          spellCheck={false}
-        />
-        <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-          <button type="button" className="btn btn-primary btn-sm" disabled={ollamaSaving} onClick={() => void saveOllamaUrl()}>
-            Save Ollama URL
-          </button>
-          <button type="button" className="btn btn-sm btn-ghost" disabled={ollamaSaving} onClick={() => void clearOllamaUrl()}>
-            Clear
-          </button>
-        </div>
-        <p className="theme-help" style={{ marginTop: 8 }}>
-          New to Jarvis? Open the Jarvis tab for install steps.
-        </p>
-        {ollamaErr && (
-          <p className="theme-help" style={{ color: 'var(--danger, #c00)', marginTop: 8 }} role="alert">
-            {ollamaErr}
-          </p>
-        )}
       </div>
 
       {onRerunTutorial && (

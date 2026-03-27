@@ -1,20 +1,17 @@
 import { useRef, useEffect } from 'react';
-import type { AssistantChatMessage, AssistantPendingItem } from '../hooks/useAssistantChat';
+import type { AssistantChatMessage } from '../hooks/useAssistantChat';
 
 export interface AssistantPanelProps {
   mutationsEnabled: boolean;
   messages: AssistantChatMessage[];
-  pendingConfirmations: AssistantPendingItem[];
-  pendingMutations: AssistantPendingItem[];
   loading: boolean;
   error: string | null;
   onSend: (text: string) => void;
-  onExecute: (items: AssistantPendingItem[]) => void;
   onDismissError: () => void;
   ollamaAvailable: boolean | null;
   ollamaCheckPending: boolean;
   ollamaSuggestedModel: string;
-  ollamaUsingLocalFallback: boolean;
+  ollamaCloudLoopbackHint?: string;
   onRecheckOllama: () => void | Promise<void>;
   /** Narrow dock layout */
   compact?: boolean;
@@ -23,17 +20,14 @@ export interface AssistantPanelProps {
 export function AssistantPanel({
   mutationsEnabled,
   messages,
-  pendingConfirmations,
-  pendingMutations,
   loading,
   error,
   onSend,
-  onExecute,
   onDismissError,
   ollamaAvailable,
   ollamaCheckPending,
   ollamaSuggestedModel,
-  ollamaUsingLocalFallback,
+  ollamaCloudLoopbackHint,
   onRecheckOllama,
   compact,
 }: AssistantPanelProps) {
@@ -46,7 +40,7 @@ export function AssistantPanel({
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, pendingConfirmations, pendingMutations, loading, ollamaAvailable]);
+  }, [messages, loading, ollamaAvailable]);
 
   const submit = () => {
     if (!ollamaReady) return;
@@ -81,6 +75,12 @@ export function AssistantPanel({
         </p>
       )}
 
+      {showSetupGuide && ollamaCloudLoopbackHint && (
+        <p className="assistant-cloud-hint" role="alert">
+          {ollamaCloudLoopbackHint}
+        </p>
+      )}
+
       {showSetupGuide && (
         <div className="assistant-setup">
           <h3 className="assistant-setup-title">Set up Jarvis (local Ollama)</h3>
@@ -98,19 +98,13 @@ export function AssistantPanel({
               In a terminal, run: <code>ollama pull {ollamaSuggestedModel}</code>
             </li>
             <li>
-              If the API runs <strong>on this computer</strong>, add to <code>server/.env</code>:{' '}
-              <code>OLLAMA_BASE_URL=http://127.0.0.1:11434</code> or{' '}
-              <code>OLLAMA_ALLOW_LOCAL_FALLBACK=true</code>, then restart the API.
+              Set <code>OLLAMA_BASE_URL</code> in <code>server/.env</code> (or your host&apos;s env) to the Ollama origin
+              the API can reach — e.g. <code>http://127.0.0.1:11434</code> locally, or your <strong>https</strong> ngrok
+              origin if the API is hosted. Restart the API after changing it.
             </li>
-            {ollamaUsingLocalFallback && (
-              <li>
-                This server is using <code>OLLAMA_ALLOW_LOCAL_FALLBACK</code> (Ollama on the same host as the API). If the
-                probe still fails, confirm Ollama is running and the model is pulled.
-              </li>
-            )}
             <li>
-              If the API runs <strong>in the cloud</strong> (e.g. Railway), it cannot reach Ollama on your PC unless you
-              expose it with a tunnel or run the API locally.
+              If the API runs <strong>in the cloud</strong>, it cannot reach Ollama on your PC at 127.0.0.1; use a tunnel
+              and put that URL in <code>OLLAMA_BASE_URL</code> on the server.
             </li>
           </ol>
           <div className="assistant-setup-actions">
@@ -123,58 +117,9 @@ export function AssistantPanel({
               {ollamaCheckPending ? 'Checking…' : 'Check again'}
             </button>
             <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-              Optional: set Ollama base URL under Settings → Jarvis.
+              Server env: <code>OLLAMA_BASE_URL</code>
             </span>
           </div>
-        </div>
-      )}
-
-      {(pendingMutations.length > 0 || pendingConfirmations.length > 0) && ollamaReady && (
-        <div className="assistant-pending assistant-pending--sticky">
-          {pendingMutations.length > 0 && (
-            <div className="assistant-pending-block">
-              <div className="assistant-pending-title">Confirm changes</div>
-              <p className="assistant-pending-hint">Tap Apply to save new or updated items to your account.</p>
-              <ul className="assistant-pending-list">
-                {pendingMutations.map((p) => (
-                  <li key={p.id} className="assistant-pending-item">
-                    <span className="assistant-pending-summary">{p.summary}</span>
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-primary"
-                      disabled={loading || !mutationsEnabled}
-                      onClick={() => onExecute([p])}
-                    >
-                      Apply
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {pendingConfirmations.length > 0 && (
-            <div className="assistant-pending-block">
-              <div className="assistant-pending-title">Confirm deletion</div>
-              <ul className="assistant-pending-list">
-                {pendingConfirmations.map((p) => (
-                  <li key={p.id} className="assistant-pending-item">
-                    <span className="assistant-pending-summary">{p.summary}</span>
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-danger"
-                      disabled={loading || !mutationsEnabled}
-                      onClick={() => {
-                        if (!window.confirm(`Delete for good?\n\n${p.summary}`)) return;
-                        onExecute([p]);
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
         </div>
       )}
 
@@ -183,9 +128,8 @@ export function AssistantPanel({
           <div className="assistant-messages">
             {messages.length === 0 && !loading && (
               <p className="assistant-empty">
-                Ask Jarvis about your notes and tasks, or say e.g. “create a note …” / “write a task …”. If something
-                needs a tap, you’ll see <strong>Confirm changes</strong> above the chat. Deletes always need confirmation
-                here.
+                Ask Jarvis about your notes and tasks, or say e.g. “create a note …” / “write a task …”. Edits apply right
+                away when <strong>Allow edits</strong> is on — you can ask Jarvis to <strong>undo</strong> recent changes.
               </p>
             )}
             {messages.map((m, i) => (

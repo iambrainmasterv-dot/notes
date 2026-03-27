@@ -97,7 +97,7 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const { notes, addNote, updateNote, recoverNote, setNotes, refetch: refetchNotes } = useNotes();
   const { tasks, addTask, updateTask, recoverTask, setTasks, refetch: refetchTasks } = useTasks();
-  const { settings, update: updateTheme, lastResetTag, saveResetTag, applySettingsLocal } = useUserSettings();
+  const { settings, update: updateTheme, lastResetTag, saveResetTag } = useUserSettings();
   useThemeApply(settings);
   const { presets, addPreset, updatePreset, deletePreset } = usePresets();
 
@@ -206,7 +206,7 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
   const [assistantDockOpen, setAssistantDockOpen] = useState(false);
   const [assistantAvailable, setAssistantAvailable] = useState<boolean | null>(null);
   const [ollamaSuggestedModel, setOllamaSuggestedModel] = useState('llama3.2');
-  const [ollamaUsingLocalFallback, setOllamaUsingLocalFallback] = useState(false);
+  const [ollamaCloudLoopbackHint, setOllamaCloudLoopbackHint] = useState<string | undefined>(undefined);
   const [ollamaCheckPending, setOllamaCheckPending] = useState(false);
 
   const checkAssistantAvailability = useCallback(async () => {
@@ -215,7 +215,7 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
       const r = await api.getAssistantAvailability();
       setAssistantAvailable(r.available);
       setOllamaSuggestedModel(r.suggestedModel);
-      setOllamaUsingLocalFallback(r.usingLocalFallback);
+      setOllamaCloudLoopbackHint(r.cloudLoopbackHint);
     } finally {
       setOllamaCheckPending(false);
     }
@@ -272,17 +272,14 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
   const assistantPanelProps = {
     mutationsEnabled: settings.aiAgentMutationsEnabled,
     messages: assistantChat.messages,
-    pendingConfirmations: assistantChat.pendingConfirmations,
-    pendingMutations: assistantChat.pendingMutations,
     loading: assistantChat.loading,
     error: assistantChat.error,
     onSend: assistantChat.send,
-    onExecute: assistantChat.executeItems,
     onDismissError: () => assistantChat.setError(null),
     ollamaAvailable: assistantAvailable,
     ollamaCheckPending,
     ollamaSuggestedModel,
-    ollamaUsingLocalFallback,
+    ollamaCloudLoopbackHint,
     onRecheckOllama: checkAssistantAvailability,
   };
 
@@ -512,10 +509,6 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
             <ThemePanel
               settings={settings}
               onUpdate={updateTheme}
-              applySettingsLocal={applySettingsLocal}
-              onOllamaUrlSaved={() => {
-                void checkAssistantAvailability();
-              }}
               localImportAvailable={localImportAvailable}
               onImportLocal={handleImportLocal}
               onRerunTutorial={tutorial.rerun}

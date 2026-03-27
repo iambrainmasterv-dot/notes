@@ -69,10 +69,6 @@ export interface ThemeSettings {
   dailyResetTime: string;
   /** When false, Jarvis cannot create, update, or delete items (chat only). */
   aiAgentMutationsEnabled: boolean;
-  /**
-   * Optional tunnel/public URL to Ollama (https://….ngrok-free.app). Stored per account; used by the API for this user instead of server OLLAMA_BASE_URL when set.
-   */
-  ollamaBaseUrl: string | null;
 }
 
 export type DeadlineSeverity = 'ok' | 'soon' | 'urgent' | 'expired';
