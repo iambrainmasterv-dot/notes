@@ -1,6 +1,12 @@
 const BROWSER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
+const BROWSER_JSON_CLIENT = {
+  'User-Agent': BROWSER_UA,
+  Accept: 'application/json',
+  'Accept-Language': 'en-US,en;q=0.9',
+};
+
 /**
  * Extra fetch headers for tunnel providers that block plain API clients.
  * Named Cloudflare tunnels on your own domain usually do not need these.
@@ -28,11 +34,7 @@ export function ollamaFetchExtraHeaders(ollamaBaseUrl) {
 
   // Quick tunnels (*.trycloudflare.com) often return 403 to default fetch/curl without a browser-like client.
   if (/\.trycloudflare\.com$/i.test(hostname)) {
-    return {
-      'User-Agent': BROWSER_UA,
-      Accept: 'application/json',
-      'Accept-Language': 'en-US,en;q=0.9',
-    };
+    return { ...BROWSER_JSON_CLIENT };
   }
 
   // https://localtunnel.github.io/www/ — reminder page; server-side fetch needs this + browser UA.
@@ -42,6 +44,21 @@ export function ollamaFetchExtraHeaders(ollamaBaseUrl) {
       'User-Agent': BROWSER_UA,
       Accept: 'application/json',
     };
+  }
+
+  // zrok / bore / pinggy / localhost.run — some edges 403 bare Node fetch without a browser-like client.
+  if (
+    /\.zrok\.io$/i.test(hostname) ||
+    /\.bore\.pub$/i.test(hostname) ||
+    /\.pinggy\.(io|link)$/i.test(hostname) ||
+    /\.localhost\.run$/i.test(hostname)
+  ) {
+    return { ...BROWSER_JSON_CLIENT };
+  }
+
+  // Tailscale Funnel HTTPS (*.ts.net) — usually fine without extras; harmless if an edge misbehaves.
+  if (/\.ts\.net$/i.test(hostname)) {
+    return { ...BROWSER_JSON_CLIENT };
   }
 
   return {};

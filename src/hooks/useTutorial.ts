@@ -13,6 +13,8 @@ export interface TutorialStep {
   gate?: TutorialGate;
   /** Backdrop does not block clicks except on the card (so user can use the app). */
   interactive?: boolean;
+  /** `data-tutorial-target` values to cut out of the dim layer and pulse-outline. */
+  highlightTargets?: string[];
 }
 
 const STEPS: TutorialStep[] = [
@@ -28,6 +30,7 @@ const STEPS: TutorialStep[] = [
     title: 'Pool — quick create',
     body: 'Use Add Note or Add Task here to jump to the right tab with the creation form open.',
     interactive: true,
+    highlightTargets: ['pool-add-note', 'pool-add-task'],
   },
   {
     skipTabKey: 'schedule',
@@ -41,6 +44,7 @@ const STEPS: TutorialStep[] = [
     title: 'Schedule — daily forms',
     body: 'Try New Daily Note or New Daily Task to see the forms. You do not need to save — explore, then tap Next when ready.',
     interactive: true,
+    highlightTargets: ['schedule-daily-note', 'schedule-daily-task'],
   },
   {
     skipTabKey: 'notes',
@@ -52,9 +56,10 @@ const STEPS: TutorialStep[] = [
     skipTabKey: 'notes',
     page: 'notes',
     title: 'Create your first note',
-    body: 'Use New Note, enter a title, and create one note. Tap Next after it appears in the list.',
+    body: 'Tap New Note, fill the form, and create one note. Tap Next after it appears in the list. The form stays bright while this step is open.',
     gate: 'requireNewNote',
     interactive: true,
+    highlightTargets: ['notes-new-note', 'notes-create-modal'],
   },
   {
     skipTabKey: 'tasks',
@@ -66,9 +71,10 @@ const STEPS: TutorialStep[] = [
     skipTabKey: 'tasks',
     page: 'tasks',
     title: 'Create your first task',
-    body: 'Use New Task, set a title and target, and create one task. Tap Next after it appears.',
+    body: 'Tap New Task, set a title and target, and create one task. Tap Next after it appears.',
     gate: 'requireNewTask',
     interactive: true,
+    highlightTargets: ['tasks-new-task', 'tasks-create-modal'],
   },
   {
     skipTabKey: 'completed',
@@ -77,10 +83,20 @@ const STEPS: TutorialStep[] = [
     body: 'Finished items land here. Recover or delete in bulk. Clear the list periodically — we will remind you if it stays full for days.',
   },
   {
+    skipTabKey: 'jarvis',
+    page: 'completed',
+    title: 'Jarvis (optional)',
+    body: 'Jarvis is the in-app assistant. It needs Ollama running on the same machine as your NoteTasks API (typical for local use). Install Ollama, then run ollama pull with a model name (e.g. llama3.2). Open the Jarvis tab in the sidebar (highlighted) when you are ready — you can finish this tutorial first.',
+    interactive: true,
+    highlightTargets: ['nav-jarvis'],
+  },
+  {
     skipTabKey: 'settings',
     page: 'settings',
     title: 'Settings',
-    body: 'Theme, density, font size, daily reset time, local import, app version, and re-run this tutorial anytime.',
+    body: 'Theme, density, font size, daily reset time, local import, app version, Jarvis / Ollama URL, and re-run this tutorial anytime.',
+    interactive: true,
+    highlightTargets: ['nav-settings'],
   },
 ];
 

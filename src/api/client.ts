@@ -140,9 +140,13 @@ export const api = {
   // Jarvis (local Ollama)
   getAssistantAvailability: async () => {
     try {
-      return await request<{ available: boolean }>('/ai/availability');
+      return await request<{
+        available: boolean;
+        suggestedModel: string;
+        usingLocalFallback: boolean;
+      }>('/ai/availability');
     } catch {
-      return { available: false };
+      return { available: false, suggestedModel: 'llama3.2', usingLocalFallback: false };
     }
   },
 

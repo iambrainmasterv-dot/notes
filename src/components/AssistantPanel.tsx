@@ -11,6 +11,11 @@ export interface AssistantPanelProps {
   onSend: (text: string) => void;
   onExecute: (items: AssistantPendingItem[]) => void;
   onDismissError: () => void;
+  ollamaAvailable: boolean | null;
+  ollamaCheckPending: boolean;
+  ollamaSuggestedModel: string;
+  ollamaUsingLocalFallback: boolean;
+  onRecheckOllama: () => void | Promise<void>;
   /** Narrow dock layout */
   compact?: boolean;
 }
@@ -25,16 +30,26 @@ export function AssistantPanel({
   onSend,
   onExecute,
   onDismissError,
+  ollamaAvailable,
+  ollamaCheckPending,
+  ollamaSuggestedModel,
+  ollamaUsingLocalFallback,
+  onRecheckOllama,
   compact,
 }: AssistantPanelProps) {
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  const ollamaReady = ollamaAvailable === true;
+  const showSetupGuide = ollamaAvailable === false;
+  const showInitialCheck = ollamaAvailable === null;
+
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, pendingConfirmations, pendingMutations, loading]);
+  }, [messages, pendingConfirmations, pendingMutations, loading, ollamaAvailable]);
 
   const submit = () => {
+    if (!ollamaReady) return;
     const el = inputRef.current;
     if (!el) return;
     const v = el.value.trim();
@@ -45,7 +60,7 @@ export function AssistantPanel({
 
   return (
     <div className={`assistant-panel ${compact ? 'assistant-panel--compact' : ''}`}>
-      {!mutationsEnabled && (
+      {!mutationsEnabled && ollamaReady && (
         <p className="assistant-banner">
           Jarvis cannot change your notes or tasks while <strong>Allow edits</strong> is off in Settings (Jarvis section).
         </p>
@@ -60,7 +75,61 @@ export function AssistantPanel({
         </div>
       )}
 
-      {(pendingMutations.length > 0 || pendingConfirmations.length > 0) && (
+      {showInitialCheck && (
+        <p className="assistant-setup" role="status">
+          Checking connection to Ollama…
+        </p>
+      )}
+
+      {showSetupGuide && (
+        <div className="assistant-setup">
+          <h3 className="assistant-setup-title">Set up Jarvis (local Ollama)</h3>
+          <p style={{ margin: '0 0 8px' }}>
+            Jarvis needs{' '}
+            <a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer">
+              Ollama
+            </a>{' '}
+            running on a machine your <strong>NoteTasks API</strong> can reach (usually this PC when you use{' '}
+            <code>npm run dev:local</code>).
+          </p>
+          <ol>
+            <li>Install Ollama from the link above and start it.</li>
+            <li>
+              In a terminal, run: <code>ollama pull {ollamaSuggestedModel}</code>
+            </li>
+            <li>
+              If the API runs <strong>on this computer</strong>, add to <code>server/.env</code>:{' '}
+              <code>OLLAMA_BASE_URL=http://127.0.0.1:11434</code> or{' '}
+              <code>OLLAMA_ALLOW_LOCAL_FALLBACK=true</code>, then restart the API.
+            </li>
+            {ollamaUsingLocalFallback && (
+              <li>
+                This server is using <code>OLLAMA_ALLOW_LOCAL_FALLBACK</code> (Ollama on the same host as the API). If the
+                probe still fails, confirm Ollama is running and the model is pulled.
+              </li>
+            )}
+            <li>
+              If the API runs <strong>in the cloud</strong> (e.g. Railway), it cannot reach Ollama on your PC unless you
+              expose it with a tunnel or run the API locally.
+            </li>
+          </ol>
+          <div className="assistant-setup-actions">
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={ollamaCheckPending}
+              onClick={() => void onRecheckOllama()}
+            >
+              {ollamaCheckPending ? 'Checking…' : 'Check again'}
+            </button>
+            <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+              Optional: set Ollama base URL under Settings → Jarvis.
+            </span>
+          </div>
+        </div>
+      )}
+
+      {(pendingMutations.length > 0 || pendingConfirmations.length > 0) && ollamaReady && (
         <div className="assistant-pending assistant-pending--sticky">
           {pendingMutations.length > 0 && (
             <div className="assistant-pending-block">
@@ -109,46 +178,51 @@ export function AssistantPanel({
         </div>
       )}
 
-      <div className="assistant-messages">
-        {messages.length === 0 && !loading && (
-          <p className="assistant-empty">
-            Ask Jarvis about your notes and tasks, or say e.g. “create a note …” / “write a task …”. If something needs a
-            tap, you’ll see <strong>Confirm changes</strong> above the chat. Deletes always need confirmation here.
-          </p>
-        )}
-        {messages.map((m, i) => (
-          <div key={i} className={`assistant-bubble assistant-bubble--${m.role}`}>
-            <div className="assistant-bubble-label">{m.role === 'user' ? 'You' : 'Jarvis'}</div>
-            <div className="assistant-bubble-text">{m.content}</div>
+      {ollamaReady && (
+        <>
+          <div className="assistant-messages">
+            {messages.length === 0 && !loading && (
+              <p className="assistant-empty">
+                Ask Jarvis about your notes and tasks, or say e.g. “create a note …” / “write a task …”. If something
+                needs a tap, you’ll see <strong>Confirm changes</strong> above the chat. Deletes always need confirmation
+                here.
+              </p>
+            )}
+            {messages.map((m, i) => (
+              <div key={i} className={`assistant-bubble assistant-bubble--${m.role}`}>
+                <div className="assistant-bubble-label">{m.role === 'user' ? 'You' : 'Jarvis'}</div>
+                <div className="assistant-bubble-text">{m.content}</div>
+              </div>
+            ))}
+            {loading && (
+              <div className="assistant-bubble assistant-bubble--assistant">
+                <div className="assistant-bubble-label">Jarvis</div>
+                <div className="assistant-bubble-text assistant-typing">Thinking…</div>
+              </div>
+            )}
+            <div ref={endRef} />
           </div>
-        ))}
-        {loading && (
-          <div className="assistant-bubble assistant-bubble--assistant">
-            <div className="assistant-bubble-label">Jarvis</div>
-            <div className="assistant-bubble-text assistant-typing">Thinking…</div>
-          </div>
-        )}
-        <div ref={endRef} />
-      </div>
 
-      <div className="assistant-input-row">
-        <textarea
-          ref={inputRef}
-          className="input assistant-input"
-          placeholder="Message Jarvis…"
-          rows={compact ? 2 : 3}
-          disabled={loading}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              submit();
-            }
-          }}
-        />
-        <button type="button" className="btn btn-primary assistant-send" disabled={loading} onClick={submit}>
-          Send
-        </button>
-      </div>
+          <div className="assistant-input-row">
+            <textarea
+              ref={inputRef}
+              className="input assistant-input"
+              placeholder="Message Jarvis…"
+              rows={compact ? 2 : 3}
+              disabled={loading}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  submit();
+                }
+              }}
+            />
+            <button type="button" className="btn btn-primary assistant-send" disabled={loading} onClick={submit}>
+              Send
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

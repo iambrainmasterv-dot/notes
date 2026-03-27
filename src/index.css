@@ -337,6 +337,45 @@ body {
   line-height: 1.45;
 }
 
+.assistant-setup {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.assistant-setup-title {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.assistant-setup ol {
+  margin: 8px 0 0;
+  padding-left: 1.25rem;
+}
+
+.assistant-setup li {
+  margin-bottom: 6px;
+}
+
+.assistant-setup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.assistant-setup code {
+  font-size: 0.82em;
+}
+
 .assistant-error {
   display: flex;
   align-items: center;
@@ -1156,7 +1195,8 @@ body {
   background: rgba(0,0,0,0.5);
   backdrop-filter: blur(8px);
   display: flex; align-items: center; justify-content: center;
-  z-index: 10000; animation: fadeIn 0.12s ease;
+  /* Above tutorial spotlight dim (10050) so create forms stay clear and interactive */
+  z-index: 10060; animation: fadeIn 0.12s ease;
 }
 
 [data-theme='dark'] .modal-overlay { background: rgba(0,0,0,0.65); }
@@ -1941,35 +1981,57 @@ body {
 /* =============================================
    Tutorial overlay
    ============================================= */
-.tutorial-overlay {
+.tutorial-root {
   position: fixed;
   inset: 0;
   z-index: 10050;
-  background: rgba(15, 23, 42, 0.45);
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding: 24px;
-  pointer-events: auto;
-}
-
-/* Clicks pass through to the app except on the card (create note/task, pool buttons, etc.). */
-.tutorial-overlay--interactive {
   pointer-events: none;
 }
 
-.tutorial-overlay--interactive .tutorial-card {
+.tutorial-root--blocking {
   pointer-events: auto;
 }
 
-.tutorial-card {
-  max-width: 420px;
+.tutorial-dim-full {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  pointer-events: auto;
+}
+
+.tutorial-spotlight-svg {
+  position: absolute;
+  inset: 0;
   width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.tutorial-card {
+  position: fixed;
+  max-width: 420px;
+  width: min(420px, calc(100vw - 32px));
   background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 20px 22px;
   box-shadow: var(--shadow-lg);
+  z-index: 10070;
+  pointer-events: auto;
+}
+
+.tutorial-target-pulse {
+  animation: tutorial-target-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes tutorial-target-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent, #3b82f6) 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent, #3b82f6) 25%, transparent);
+  }
 }
 
 .tutorial-progress {

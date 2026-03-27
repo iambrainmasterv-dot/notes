@@ -6,25 +6,46 @@ import { ollamaFetchExtraHeaders } from '../services/ollamaTunnelHeaders.js';
 
 const router = Router();
 
-async function resolveOllamaBase(userId) {
+const LOCAL_OLLAMA_DEFAULT = 'http://127.0.0.1:11434';
+
+function suggestedOllamaModel() {
+  const m = (process.env.OLLAMA_MODEL || 'llama3.2').trim();
+  return m || 'llama3.2';
+}
+
+/**
+ * @param {string} userId
+ * @returns {Promise<{ base: string, usingLocalFallback: boolean }>}
+ */
+async function getOllamaResolution(userId) {
   const { rows } = await pool.query(
     'SELECT ollama_base_url FROM user_settings WHERE user_id = $1',
     [userId],
   );
   const fromDb = rows[0]?.ollama_base_url;
   if (typeof fromDb === 'string' && fromDb.trim()) {
-    return fromDb.trim().replace(/\/$/, '');
+    return { base: fromDb.trim().replace(/\/$/, ''), usingLocalFallback: false };
   }
   const env = process.env.OLLAMA_BASE_URL?.trim();
-  if (env) return env.replace(/\/$/, '');
-  return '';
+  if (env) return { base: env.replace(/\/$/, ''), usingLocalFallback: false };
+  if (process.env.OLLAMA_ALLOW_LOCAL_FALLBACK === 'true') {
+    return { base: LOCAL_OLLAMA_DEFAULT, usingLocalFallback: true };
+  }
+  return { base: '', usingLocalFallback: false };
+}
+
+async function resolveOllamaBase(userId) {
+  const { base } = await getOllamaResolution(userId);
+  return base;
 }
 
 router.get('/availability', async (req, res) => {
+  const suggestedModel = suggestedOllamaModel();
   try {
-    const base = await resolveOllamaBase(req.userId);
+    const { base, usingLocalFallback } = await getOllamaResolution(req.userId);
+    const meta = () => ({ suggestedModel, usingLocalFallback });
     if (!base) {
-      return res.json({ available: false });
+      return res.json({ available: false, ...meta() });
     }
     const versionUrl = `${base}/api/version`;
     const signal = AbortSignal.timeout(2000);
@@ -33,16 +54,17 @@ router.get('/availability', async (req, res) => {
       headers: ollamaFetchExtraHeaders(base),
     });
     if (!r.ok) {
-      return res.json({ available: false });
+      return res.json({ available: false, ...meta() });
     }
     const data = await r.json().catch(() => null);
     if (!data || typeof data !== 'object') {
-      return res.json({ available: false });
+      return res.json({ available: false, ...meta() });
     }
-    return res.json({ available: true });
+    return res.json({ available: true, ...meta() });
   } catch (e) {
     console.error('GET /api/ai/availability', e?.message || e);
-    return res.json({ available: false });
+    const { usingLocalFallback } = await getOllamaResolution(req.userId);
+    return res.json({ available: false, suggestedModel, usingLocalFallback });
   }
 });
 
@@ -61,7 +83,7 @@ router.post('/chat', async (req, res) => {
     if (!ollamaBase) {
       return res.status(503).json({
         error:
-          'No Ollama URL configured. Add it in Settings → Jarvis (Ollama base URL), or set OLLAMA_BASE_URL on the server.',
+          'No Ollama URL configured. Add it in Settings → Jarvis (Ollama base URL), set OLLAMA_BASE_URL on the server, or enable OLLAMA_ALLOW_LOCAL_FALLBACK=true for same-machine Ollama.',
       });
     }
     const settingsRow = await loadMutationFlag(req.userId);

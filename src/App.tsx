@@ -205,10 +205,20 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
   const [wideViewport, setWideViewport] = useState(false);
   const [assistantDockOpen, setAssistantDockOpen] = useState(false);
   const [assistantAvailable, setAssistantAvailable] = useState<boolean | null>(null);
+  const [ollamaSuggestedModel, setOllamaSuggestedModel] = useState('llama3.2');
+  const [ollamaUsingLocalFallback, setOllamaUsingLocalFallback] = useState(false);
+  const [ollamaCheckPending, setOllamaCheckPending] = useState(false);
 
   const checkAssistantAvailability = useCallback(async () => {
-    const { available } = await api.getAssistantAvailability();
-    setAssistantAvailable(available);
+    setOllamaCheckPending(true);
+    try {
+      const r = await api.getAssistantAvailability();
+      setAssistantAvailable(r.available);
+      setOllamaSuggestedModel(r.suggestedModel);
+      setOllamaUsingLocalFallback(r.usingLocalFallback);
+    } finally {
+      setOllamaCheckPending(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -231,23 +241,7 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
     };
   }, [checkAssistantAvailability]);
 
-  useEffect(() => {
-    if (assistantAvailable === false && page === 'assistant') {
-      setPage('pool');
-    }
-  }, [assistantAvailable, page]);
-
-  useEffect(() => {
-    if (assistantAvailable === false) setAssistantDockOpen(false);
-  }, [assistantAvailable]);
-
-  /** Hide Jarvis tab only after an explicit false; null (loading) still shows the tab (local dev UX). */
-  const showAssistantInUi = assistantAvailable !== false;
-
-  const visibleTabs = useMemo(
-    () => (showAssistantInUi ? tabs : tabs.filter((t) => t.key !== 'assistant')),
-    [showAssistantInUi],
-  );
+  const visibleTabs = tabs;
 
   useEffect(() => {
     const m = window.matchMedia('(min-width: 960px)');
@@ -285,10 +279,14 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
     onSend: assistantChat.send,
     onExecute: assistantChat.executeItems,
     onDismissError: () => assistantChat.setError(null),
+    ollamaAvailable: assistantAvailable,
+    ollamaCheckPending,
+    ollamaSuggestedModel,
+    ollamaUsingLocalFallback,
+    onRecheckOllama: checkAssistantAvailability,
   };
 
-  const showAssistantDock =
-    showAssistantInUi && wideViewport && assistantDockOpen && page !== 'assistant';
+  const showAssistantDock = wideViewport && assistantDockOpen && page !== 'assistant';
 
   const tutorial = useTutorial(userId, setPage, setSettingsOpen, notes.length, tasks.length);
 
@@ -460,8 +458,10 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
           {visibleTabs.map((tab) => (
             <li key={tab.key}>
               <button
+                type="button"
                 className={`nav-item ${page === tab.key ? 'active' : ''}`}
                 onClick={() => { setPage(tab.key); setNotifOpen(false); }}
+                data-tutorial-target={tab.key === 'assistant' ? 'nav-jarvis' : undefined}
               >
                 <span className="nav-icon">{tab.icon}</span>
                 <span className="nav-label">{tab.label}</span>
@@ -479,7 +479,7 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
           ))}
         </ul>
 
-        {wideViewport && showAssistantInUi && (
+        {wideViewport && (
           <div className="sidebar-dock-toggle-wrap">
             <button
               type="button"
@@ -496,7 +496,12 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
 
         <div className="sidebar-bottom">
           <div className="sidebar-bottom-row">
-            <button type="button" className={`nav-item ${settingsOpen ? 'active' : ''}`} onClick={() => setSettingsOpen((p) => !p)}>
+            <button
+              type="button"
+              className={`nav-item ${settingsOpen ? 'active' : ''}`}
+              onClick={() => setSettingsOpen((p) => !p)}
+              data-tutorial-target="nav-settings"
+            >
               <span className="nav-icon">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
               </span>
@@ -530,7 +535,7 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
 
       <div className="app-main-row">
       <main className="main-content" onClick={() => setNotifOpen(false)}>
-        {showAssistantInUi && page === 'assistant' && <AssistantPage {...assistantPanelProps} />}
+        {page === 'assistant' && <AssistantPage {...assistantPanelProps} />}
         {page === 'pool' && (
           <PoolPage notes={notes} tasks={tasks}
             addNote={addNote} addTask={addTask}

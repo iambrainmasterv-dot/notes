@@ -8,6 +8,9 @@
     "dev:local": "concurrently -k -n api,web -c cyan,magenta \"npm run dev --prefix server\" \"vite\"",
     "tunnel:ollama": "npx --yes localtunnel --port 11434 --local-host 127.0.0.1",
     "tunnel:ollama:verbose": "npx --yes localtunnel --port 11434 --local-host 127.0.0.1 --print-requests",
+    "tunnel:ollama:cloudflare": "cloudflared tunnel --url http://127.0.0.1:11434",
+    "tunnel:ollama:cf": "cloudflared tunnel --url http://127.0.0.1:11434",
+    "tunnel:ollama:tailscale": "tailscale funnel 11434",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
@@ -24,6 +27,7 @@
     "@types/react-dom": "^19.2.3",
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^6.0.0",
+    "cloudflared": "^0.7.1",
     "concurrently": "^9.2.1",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",

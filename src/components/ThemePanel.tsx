@@ -238,6 +238,9 @@ export function ThemePanel({
             Clear
           </button>
         </div>
+        <p className="theme-help" style={{ marginTop: 8 }}>
+          New to Jarvis? Open the Jarvis tab for install steps.
+        </p>
         {ollamaErr && (
           <p className="theme-help" style={{ color: 'var(--danger, #c00)', marginTop: 8 }} role="alert">
             {ollamaErr}

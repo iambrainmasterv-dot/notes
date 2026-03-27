@@ -150,12 +150,22 @@ export function PoolPage({
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <span className="text-muted" style={{ fontSize: '0.85rem' }}>{visibleFiltered.length} active items</span>
           {onPoolQuickCreateNote && (
-            <button type="button" className="btn btn-sm btn-primary" onClick={onPoolQuickCreateNote}>
+            <button
+              type="button"
+              className="btn btn-sm btn-primary"
+              onClick={onPoolQuickCreateNote}
+              data-tutorial-target="pool-add-note"
+            >
               Add Note
             </button>
           )}
           {onPoolQuickCreateTask && (
-            <button type="button" className="btn btn-sm btn-primary" onClick={onPoolQuickCreateTask}>
+            <button
+              type="button"
+              className="btn btn-sm btn-primary"
+              onClick={onPoolQuickCreateTask}
+              data-tutorial-target="pool-add-task"
+            >
               Add Task
             </button>
           )}

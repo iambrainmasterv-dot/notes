@@ -6,9 +6,11 @@ interface Props {
   onClose: () => void;
   title: string;
   children: React.ReactNode;
+  /** For tutorial spotlight (`data-tutorial-target` on the dialog surface). */
+  tutorialTarget?: string;
 }
 
-export function Modal({ open, onClose, title, children }: Props) {
+export function Modal({ open, onClose, title, children, tutorialTarget }: Props) {
   const overlayRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -32,7 +34,7 @@ export function Modal({ open, onClose, title, children }: Props) {
 
   return createPortal(
     <div className="modal-overlay" ref={overlayRef} onClick={(e) => e.target === overlayRef.current && onClose()}>
-      <div className="modal">
+      <div className="modal" data-tutorial-target={tutorialTarget ?? undefined}>
         <div className="modal-header">
           <h2>{title}</h2>
           <button className="btn btn-icon" onClick={onClose}>
