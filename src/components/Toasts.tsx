@@ -1,5 +1,7 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { ToastItem } from '../hooks/useNotifications';
+
+const TOAST_EXIT_MS = 220;
 
 function ToastRow({
   toast,
@@ -10,18 +12,34 @@ function ToastRow({
   onDismiss: (id: string) => void;
   durationMs: number;
 }) {
+  const [exiting, setExiting] = useState(false);
+
+  const requestDismiss = useCallback(() => {
+    setExiting(true);
+  }, []);
+
   useEffect(() => {
-    const t = window.setTimeout(() => onDismiss(toast.id), durationMs);
-    return () => clearTimeout(t);
-  }, [toast.id, durationMs, onDismiss]);
+    if (exiting) return;
+    const t = window.setTimeout(requestDismiss, durationMs);
+    return () => window.clearTimeout(t);
+  }, [toast.id, durationMs, exiting, requestDismiss]);
+
+  useEffect(() => {
+    if (!exiting) return;
+    const t = window.setTimeout(() => onDismiss(toast.id), TOAST_EXIT_MS);
+    return () => window.clearTimeout(t);
+  }, [exiting, onDismiss, toast.id]);
 
   return (
-    <div className={`toast toast-${toast.level}`} role="status">
+    <div
+      className={`toast toast-${toast.level}${exiting ? ' toast-exiting' : ''}`}
+      role="status"
+    >
       <div className="toast-body">
         <strong className="toast-title">{toast.title}</strong>
         <p className="toast-msg">{toast.message}</p>
       </div>
-      <button type="button" className="toast-close btn-icon" aria-label="Dismiss" onClick={() => onDismiss(toast.id)}>×</button>
+      <button type="button" className="toast-close btn-icon" aria-label="Dismiss" onClick={requestDismiss}>×</button>
     </div>
   );
 }

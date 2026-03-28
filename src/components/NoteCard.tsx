@@ -35,6 +35,8 @@ interface Props {
   addTask: (data: Omit<Task, 'id' | 'type' | 'completed' | 'createdAt' | 'progress'>) => void;
   allowParentEdit?: boolean;
   nestDepth?: number;
+  /** When false, subitems are rendered as siblings (e.g. masonry list); collapse still toggles visibility in the flat list. */
+  embedSubitems?: boolean;
   onMouseDown?: React.MouseEventHandler<HTMLDivElement>;
   style?: React.CSSProperties;
   className?: string;
@@ -56,6 +58,7 @@ export function NoteCard({
   addTask,
   allowParentEdit = false,
   nestDepth = 0,
+  embedSubitems = true,
   onMouseDown,
   style,
   className = '',
@@ -196,7 +199,7 @@ export function NoteCard({
           <button type="button" className="btn-text" onClick={() => onToggleCollapse(note.id)}>
             {note.collapsed ? `▸ ${childCount} subitems` : `▾ ${childCount} subitems`}
           </button>
-          {!note.collapsed && (
+          {!note.collapsed && embedSubitems && (
             <div className="subnotes-list subnotes-list--tree">
               {childNotes.map((child) => (
                 <NoteCard
@@ -216,6 +219,7 @@ export function NoteCard({
                   addTask={addTask}
                   allowParentEdit={allowParentEdit}
                   nestDepth={nestDepth + 1}
+                  embedSubitems={embedSubitems}
                 />
               ))}
               {childTasks.map((child) => (
@@ -236,6 +240,7 @@ export function NoteCard({
                   addTask={addTask}
                   allowParentEdit={allowParentEdit}
                   nestDepth={nestDepth + 1}
+                  embedSubitems={embedSubitems}
                 />
               ))}
             </div>

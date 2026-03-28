@@ -7,7 +7,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { DeadlineBadge } from '../components/DeadlineBadge';
 import { ItemOriginBadges } from '../components/ItemOriginBadges';
 import { useTick } from '../hooks/useTick';
-import { itemOriginRowClass, itemOriginCardClass } from '../utils';
+import { itemOriginRowClass, itemOriginCardClass, formatCompletedAt } from '../utils';
 
 interface Props {
   notes: Note[];
@@ -25,7 +25,7 @@ export function CompletedPage({
 }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [search, setSearch] = useState('');
-  const [sortField, setSortField] = useState<SortField>('createdAt');
+  const [sortField, setSortField] = useState<SortField>('completedAt');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmAction, setConfirmAction] = useState<'selected' | 'all' | null>(null);
@@ -49,6 +49,18 @@ export function CompletedPage({
       let bVal: string | number = '';
       if (sortField === 'title') { aVal = a.title.toLowerCase(); bVal = b.title.toLowerCase(); }
       else if (sortField === 'type') { aVal = a.type; bVal = b.type; }
+      else if (sortField === 'completedAt') {
+        aVal = a.completedAt || a.createdAt;
+        bVal = b.completedAt || b.createdAt;
+      }
+      else if (sortField === 'deadline') {
+        aVal = a.deadline || '';
+        bVal = b.deadline || '';
+      }
+      else if (sortField === 'progress' && a.type === 'task' && b.type === 'task') {
+        aVal = (a as Task).progress / Math.max(1, (a as Task).target);
+        bVal = (b as Task).progress / Math.max(1, (b as Task).target);
+      }
       else { aVal = a.createdAt; bVal = b.createdAt; }
       if (aVal < bVal) return sortDir === 'asc' ? -1 : 1;
       if (aVal > bVal) return sortDir === 'asc' ? 1 : -1;
@@ -114,6 +126,9 @@ export function CompletedPage({
             )}
           </div>
           <span className="completed-title">{item.title}</span>
+          <span className="completed-at-label text-muted">
+            Completed {formatCompletedAt(item.completedAt)}
+          </span>
           {item.type === 'task' && (
             <ProgressBar progress={(item as Task).progress} target={(item as Task).target} compact />
           )}
@@ -155,7 +170,7 @@ export function CompletedPage({
 
       <div className="page-toolbar">
         <SearchBar value={search} onChange={setSearch} placeholder="Search completed..." />
-        <SortControls field={sortField} dir={sortDir} onFieldChange={setSortField} onDirChange={setSortDir} showType />
+        <SortControls field={sortField} dir={sortDir} onFieldChange={setSortField} onDirChange={setSortDir} showType showCompletedAt showProgress />
         <div className="view-toggle">
           {(['list', 'table', 'canvas'] as ViewMode[]).map((v) => (
             <button key={v} className={`vt-btn ${viewMode === v ? 'active' : ''}`} onClick={() => setViewMode(v)}>
@@ -178,11 +193,11 @@ export function CompletedPage({
         <div className="table-wrapper">
           <table className="data-table">
             <thead>
-              <tr><th></th><th>Type</th><th>Title</th><th>Description</th><th>Progress</th><th>Actions</th></tr>
+              <tr><th></th><th>Type</th><th>Title</th><th>Completed</th><th>Description</th><th>Progress</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {filtered.length === 0 && (
-                <tr><td colSpan={6} className="empty-state">No completed items yet.</td></tr>
+                <tr><td colSpan={7} className="empty-state">No completed items yet.</td></tr>
               )}
               {filtered.map((item) => {
                 const fromT = item.type === 'note'
@@ -193,6 +208,7 @@ export function CompletedPage({
                   <td><input type="checkbox" checked={selected.has(item.id)} onChange={() => toggle(item.id)} style={{ accentColor: 'var(--primary)', cursor: 'pointer' }} /></td>
                   <td><span className={`type-tag type-${item.type}`}>{item.type}</span></td>
                   <td className="td-title">{item.title}</td>
+                  <td className="td-desc">{formatCompletedAt(item.completedAt)}</td>
                   <td className="td-desc">{item.description || '—'}</td>
                   <td>{item.type === 'task' ? <ProgressBar progress={(item as Task).progress} target={(item as Task).target} compact /> : '—'}</td>
                   <td className="td-actions">
@@ -228,6 +244,9 @@ export function CompletedPage({
                     <h3 className="card-title" style={{ flex: 1 }}>{item.title}</h3>
                   </div>
                   {item.description && <p className="card-desc">{item.description}</p>}
+                  <p className="card-desc text-muted" style={{ fontSize: '0.72rem' }}>
+                    Completed {formatCompletedAt(item.completedAt)}
+                  </p>
                   {item.type === 'task' && <ProgressBar progress={(item as Task).progress} target={(item as Task).target} compact />}
                   <div className="card-actions">
                     <button className="btn btn-sm btn-ghost btn-recover" onClick={() => recoverItem(item)}>↩ Recover</button>

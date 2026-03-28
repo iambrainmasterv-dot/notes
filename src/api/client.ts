@@ -44,7 +44,15 @@ export const api = {
   me: () => request<{ user: { id: string; email: string } }>('/auth/me'),
 
   forgotPassword: (email: string) =>
-    request<{ ok: boolean; message?: string }>('/auth/forgot-password', {
+    request<{
+      ok: boolean;
+      message?: string;
+      mailConfigured?: boolean;
+      emailSent?: boolean;
+      /** Non-production (or DEV_PASSWORD_RESET_LINK=true): present when email failed so you can still reset locally */
+      devResetUrl?: string;
+      mailError?: string;
+    }>('/auth/forgot-password', {
       method: 'POST',
       body: JSON.stringify({ email }),
     }),

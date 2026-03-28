@@ -6,6 +6,8 @@ export interface Note {
   title: string;
   description: string;
   completed: boolean;
+  /** ISO timestamp when marked complete; cleared on recover */
+  completedAt?: string;
   createdAt: string;
   /** Full datetime "YYYY-MM-DDTHH:mm" for regular, time-only "HH:mm" for daily */
   deadline?: string;
@@ -26,6 +28,8 @@ export interface Task {
   title: string;
   description: string;
   completed: boolean;
+  /** ISO timestamp when marked complete; cleared on recover */
+  completedAt?: string;
   createdAt: string;
   deadline?: string;
   parentId?: string;
@@ -46,7 +50,7 @@ export type Page = 'pool' | 'schedule' | 'notes' | 'tasks' | 'completed' | 'assi
 /** Suggested main tab when Jarvis touches schedule vs notes vs tasks data */
 export type AssistantWorkContext = 'notes' | 'tasks' | 'schedule';
 
-export type SortField = 'title' | 'deadline' | 'createdAt' | 'progress' | 'type';
+export type SortField = 'title' | 'deadline' | 'createdAt' | 'progress' | 'type' | 'completedAt';
 export type SortDir = 'asc' | 'desc';
 
 export type ThemeMode = 'light' | 'dark' | 'system';

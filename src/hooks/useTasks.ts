@@ -11,6 +11,7 @@ function toApi(t: Task) {
     title: t.title,
     description: t.description,
     completed: t.completed,
+    completed_at: t.completedAt ?? null,
     created_at: t.createdAt,
     deadline: t.deadline ?? null,
     parent_id: t.parentId ?? null,
@@ -30,6 +31,7 @@ function fromApi(row: Record<string, unknown>): Task {
     title: row.title as string,
     description: row.description as string,
     completed: row.completed as boolean,
+    completedAt: (row.completed_at as string) || undefined,
     createdAt: row.created_at as string,
     deadline: (row.deadline as string) || undefined,
     parentId: (row.parent_id as string) || undefined,
@@ -93,6 +95,7 @@ export function useTasks() {
     if (patch.title !== undefined) dbPatch.title = patch.title;
     if (patch.description !== undefined) dbPatch.description = patch.description;
     if (patch.completed !== undefined) dbPatch.completed = patch.completed;
+    if (patch.completedAt !== undefined) dbPatch.completed_at = patch.completedAt ?? null;
     if (patch.deadline !== undefined) dbPatch.deadline = patch.deadline ?? null;
     if (patch.target !== undefined) dbPatch.target = patch.target;
     if (patch.progress !== undefined) dbPatch.progress = patch.progress;
@@ -108,13 +111,14 @@ export function useTasks() {
   }, []);
 
   const completeTask = useCallback((id: string) => {
-    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, completed: true } : t)));
-    api.updateTask(id, { completed: true }).catch(() => {});
+    const ts = new Date().toISOString();
+    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, completed: true, completedAt: ts } : t)));
+    api.updateTask(id, { completed: true, completed_at: ts }).catch(() => {});
   }, []);
 
   const recoverTask = useCallback((id: string) => {
-    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, completed: false } : t)));
-    api.updateTask(id, { completed: false }).catch(() => {});
+    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, completed: false, completedAt: undefined } : t)));
+    api.updateTask(id, { completed: false, completed_at: null }).catch(() => {});
   }, []);
 
   return { tasks, addTask, updateTask, deleteTask, completeTask, recoverTask, setTasks, refetch };

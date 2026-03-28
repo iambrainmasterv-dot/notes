@@ -202,6 +202,11 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
   const [openCreateNoteNonce, setOpenCreateNoteNonce] = useState(0);
   const [openCreateTaskNonce, setOpenCreateTaskNonce] = useState(0);
 
+  useEffect(() => {
+    if (page !== 'notes') setOpenCreateNoteNonce(0);
+    if (page !== 'tasks') setOpenCreateTaskNonce(0);
+  }, [page]);
+
   const [wideViewport, setWideViewport] = useState(false);
   const [assistantDockOpen, setAssistantDockOpen] = useState(false);
   const [assistantAvailable, setAssistantAvailable] = useState<boolean | null>(null);
@@ -374,26 +379,28 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
 
   const completeNoteCascade = useCallback(
     (id: string) => {
+      const ts = new Date().toISOString();
       const { noteIds, taskIds } = collectDescendantIds('note', id, notes, tasks);
       const nIds = new Set([id, ...noteIds]);
       const tIds = new Set(taskIds);
-      setNotes((prev) => prev.map((n) => (nIds.has(n.id) ? { ...n, completed: true } : n)));
-      setTasks((prev) => prev.map((t) => (tIds.has(t.id) ? { ...t, completed: true } : t)));
-      nIds.forEach((nid) => api.updateNote(nid, { completed: true }).catch(() => {}));
-      tIds.forEach((tid) => api.updateTask(tid, { completed: true }).catch(() => {}));
+      setNotes((prev) => prev.map((n) => (nIds.has(n.id) ? { ...n, completed: true, completedAt: ts } : n)));
+      setTasks((prev) => prev.map((t) => (tIds.has(t.id) ? { ...t, completed: true, completedAt: ts } : t)));
+      nIds.forEach((nid) => api.updateNote(nid, { completed: true, completed_at: ts }).catch(() => {}));
+      tIds.forEach((tid) => api.updateTask(tid, { completed: true, completed_at: ts }).catch(() => {}));
     },
     [notes, tasks, setNotes, setTasks],
   );
 
   const completeTaskCascade = useCallback(
     (id: string) => {
+      const ts = new Date().toISOString();
       const { noteIds, taskIds } = collectDescendantIds('task', id, notes, tasks);
       const nIds = new Set(noteIds);
       const tIds = new Set([id, ...taskIds]);
-      setNotes((prev) => prev.map((n) => (nIds.has(n.id) ? { ...n, completed: true } : n)));
-      setTasks((prev) => prev.map((t) => (tIds.has(t.id) ? { ...t, completed: true } : t)));
-      nIds.forEach((nid) => api.updateNote(nid, { completed: true }).catch(() => {}));
-      tIds.forEach((tid) => api.updateTask(tid, { completed: true }).catch(() => {}));
+      setNotes((prev) => prev.map((n) => (nIds.has(n.id) ? { ...n, completed: true, completedAt: ts } : n)));
+      setTasks((prev) => prev.map((t) => (tIds.has(t.id) ? { ...t, completed: true, completedAt: ts } : t)));
+      nIds.forEach((nid) => api.updateNote(nid, { completed: true, completed_at: ts }).catch(() => {}));
+      tIds.forEach((tid) => api.updateTask(tid, { completed: true, completed_at: ts }).catch(() => {}));
     },
     [notes, tasks, setNotes, setTasks],
   );
@@ -531,66 +538,68 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
 
       <div className="app-main-row">
       <main className="main-content" onClick={() => setNotifOpen(false)}>
-        {page === 'assistant' && <AssistantPage {...assistantPanelProps} />}
-        {page === 'pool' && (
-          <PoolPage notes={notes} tasks={tasks}
-            addNote={addNote} addTask={addTask}
-            updateNote={updateNote} updateTask={updateTask}
-            deleteNote={deleteNoteCascade} deleteTask={deleteTaskCascade}
-            completeNote={completeNoteCascade} completeTask={completeTaskCascade}
-            onPoolQuickCreateNote={() => { setPage('notes'); setOpenCreateNoteNonce((n) => n + 1); }}
-            onPoolQuickCreateTask={() => { setPage('tasks'); setOpenCreateTaskNonce((n) => n + 1); }}
-          />
-        )}
-        {page === 'schedule' && (
-          <SchedulePage
-            notes={notes} tasks={tasks}
-            addNote={addNote} addTask={addTask}
-            updateNote={updateNote} updateTask={updateTask}
-            deleteNote={deleteNoteCascade} deleteTask={deleteTaskCascade}
-            completeNote={completeNoteCascade} completeTask={completeTaskCascade}
-            setNotes={setNotes} setTasks={setTasks}
-            presets={presets} addPreset={addPreset}
-            updatePreset={updatePreset} deletePreset={deletePreset}
-            scheduleTemplates={scheduleTemplates}
-            addScheduleTemplate={addScheduleTemplate}
-            deleteScheduleTemplate={deleteScheduleTemplate}
-          />
-        )}
-        {page === 'notes' && (
-          <NotesPage
-            notes={notes}
-            tasks={tasks}
-            openCreateNonce={openCreateNoteNonce}
-            addNote={addNote}
-            addTask={addTask}
-            updateNote={updateNote}
-            updateTask={updateTask}
-            deleteNote={deleteNoteCascade}
-            deleteTask={deleteTaskCascade}
-            completeNote={completeNoteCascade}
-            completeTask={completeTaskCascade}
-          />
-        )}
-        {page === 'tasks' && (
-          <TasksPage
-            notes={notes}
-            tasks={tasks}
-            openCreateNonce={openCreateTaskNonce}
-            addNote={addNote}
-            addTask={addTask}
-            updateNote={updateNote}
-            updateTask={updateTask}
-            deleteNote={deleteNoteCascade}
-            deleteTask={deleteTaskCascade}
-            completeNote={completeNoteCascade}
-            completeTask={completeTaskCascade}
-          />
-        )}
-        {page === 'completed' && (
-          <CompletedPage notes={notes} tasks={tasks} recoverNote={recoverNote} recoverTask={recoverTask}
-            deleteNote={deleteNoteCascade} deleteTask={deleteTaskCascade} setNotes={setNotes} setTasks={setTasks} />
-        )}
+        <div key={page} className="main-page-enter">
+          {page === 'assistant' && <AssistantPage {...assistantPanelProps} />}
+          {page === 'pool' && (
+            <PoolPage notes={notes} tasks={tasks}
+              addNote={addNote} addTask={addTask}
+              updateNote={updateNote} updateTask={updateTask}
+              deleteNote={deleteNoteCascade} deleteTask={deleteTaskCascade}
+              completeNote={completeNoteCascade} completeTask={completeTaskCascade}
+              onPoolQuickCreateNote={() => { setPage('notes'); setOpenCreateNoteNonce((n) => n + 1); }}
+              onPoolQuickCreateTask={() => { setPage('tasks'); setOpenCreateTaskNonce((n) => n + 1); }}
+            />
+          )}
+          {page === 'schedule' && (
+            <SchedulePage
+              notes={notes} tasks={tasks}
+              addNote={addNote} addTask={addTask}
+              updateNote={updateNote} updateTask={updateTask}
+              deleteNote={deleteNoteCascade} deleteTask={deleteTaskCascade}
+              completeNote={completeNoteCascade} completeTask={completeTaskCascade}
+              setNotes={setNotes} setTasks={setTasks}
+              presets={presets} addPreset={addPreset}
+              updatePreset={updatePreset} deletePreset={deletePreset}
+              scheduleTemplates={scheduleTemplates}
+              addScheduleTemplate={addScheduleTemplate}
+              deleteScheduleTemplate={deleteScheduleTemplate}
+            />
+          )}
+          {page === 'notes' && (
+            <NotesPage
+              notes={notes}
+              tasks={tasks}
+              openCreateNonce={openCreateNoteNonce}
+              addNote={addNote}
+              addTask={addTask}
+              updateNote={updateNote}
+              updateTask={updateTask}
+              deleteNote={deleteNoteCascade}
+              deleteTask={deleteTaskCascade}
+              completeNote={completeNoteCascade}
+              completeTask={completeTaskCascade}
+            />
+          )}
+          {page === 'tasks' && (
+            <TasksPage
+              notes={notes}
+              tasks={tasks}
+              openCreateNonce={openCreateTaskNonce}
+              addNote={addNote}
+              addTask={addTask}
+              updateNote={updateNote}
+              updateTask={updateTask}
+              deleteNote={deleteNoteCascade}
+              deleteTask={deleteTaskCascade}
+              completeNote={completeNoteCascade}
+              completeTask={completeTaskCascade}
+            />
+          )}
+          {page === 'completed' && (
+            <CompletedPage notes={notes} tasks={tasks} recoverNote={recoverNote} recoverTask={recoverTask}
+              deleteNote={deleteNoteCascade} deleteTask={deleteTaskCascade} setNotes={setNotes} setTasks={setTasks} />
+          )}
+        </div>
       </main>
       {showAssistantDock && (
         <AssistantDock {...assistantPanelProps} onClose={() => setAssistantDockOpen(false)} />

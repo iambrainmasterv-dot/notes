@@ -9,24 +9,31 @@ router.get('/', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const { id, title, description, completed, created_at, deadline, parent_id, parent_type, position_x, position_y, collapsed, daily, source_schedule_template_id, source_occurrence_date } = req.body;
+  const { id, title, description, completed, created_at, deadline, parent_id, parent_type, position_x, position_y, collapsed, daily, source_schedule_template_id, source_occurrence_date, completed_at } = req.body;
   const { rows } = await pool.query(
-    `INSERT INTO notes (id, user_id, title, description, completed, created_at, deadline, parent_id, parent_type, position_x, position_y, collapsed, daily, source_schedule_template_id, source_occurrence_date)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
-    [id, req.userId, title, description, completed, created_at, deadline, parent_id, parent_type ?? null, position_x, position_y, collapsed ?? false, daily ?? false, source_schedule_template_id ?? null, source_occurrence_date ?? null],
+    `INSERT INTO notes (id, user_id, title, description, completed, created_at, deadline, parent_id, parent_type, position_x, position_y, collapsed, daily, source_schedule_template_id, source_occurrence_date, completed_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+    [id, req.userId, title, description, completed, created_at, deadline, parent_id, parent_type ?? null, position_x, position_y, collapsed ?? false, daily ?? false, source_schedule_template_id ?? null, source_occurrence_date ?? null, completed_at ?? null],
   );
   res.json(rows[0]);
 });
 
 router.patch('/:id', async (req, res) => {
-  const allowed = ['title', 'description', 'completed', 'deadline', 'parent_id', 'parent_type', 'position_x', 'position_y', 'collapsed', 'daily'];
+  const body = { ...req.body };
+  if (body.completed === true && body.completed_at === undefined) {
+    body.completed_at = new Date().toISOString();
+  }
+  if (body.completed === false) {
+    body.completed_at = null;
+  }
+  const allowed = ['title', 'description', 'completed', 'deadline', 'parent_id', 'parent_type', 'position_x', 'position_y', 'collapsed', 'daily', 'completed_at'];
   const sets = [];
   const vals = [];
   let i = 1;
   for (const key of allowed) {
-    if (req.body[key] !== undefined) {
+    if (body[key] !== undefined) {
       sets.push(`${key} = $${i++}`);
-      vals.push(req.body[key]);
+      vals.push(body[key]);
     }
   }
   if (sets.length === 0) return res.status(400).json({ error: 'No fields to update' });

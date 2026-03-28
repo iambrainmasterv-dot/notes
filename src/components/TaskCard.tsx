@@ -27,6 +27,7 @@ interface Props {
   addTask: (data: Omit<Task, 'id' | 'type' | 'completed' | 'createdAt' | 'progress'>) => void;
   allowParentEdit?: boolean;
   nestDepth?: number;
+  embedSubitems?: boolean;
   onMouseDown?: React.MouseEventHandler<HTMLDivElement>;
   style?: React.CSSProperties;
   className?: string;
@@ -48,6 +49,7 @@ export function TaskCard({
   addTask,
   allowParentEdit = false,
   nestDepth = 0,
+  embedSubitems = true,
   onMouseDown,
   style,
   className = '',
@@ -226,7 +228,7 @@ export function TaskCard({
         </button>
       </div>
 
-      {childCount > 0 && (
+      {childCount > 0 && embedSubitems && (
         <div className="subnotes">
           <button type="button" className="btn-text" onClick={() => setSubExpanded((e) => !e)}>
             {subExpanded ? `▾ ${childCount} subitems` : `▸ ${childCount} subitems`}
@@ -252,6 +254,7 @@ export function TaskCard({
                     addTask={addTask}
                     allowParentEdit={allowParentEdit}
                     nestDepth={nestDepth + 1}
+                    embedSubitems={embedSubitems}
                   />
                 ))}
               </Suspense>
@@ -273,6 +276,7 @@ export function TaskCard({
                   addTask={addTask}
                   allowParentEdit={allowParentEdit}
                   nestDepth={nestDepth + 1}
+                  embedSubitems={embedSubitems}
                 />
               ))}
             </div>

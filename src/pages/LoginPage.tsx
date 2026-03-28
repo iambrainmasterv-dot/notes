@@ -22,6 +22,7 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
+  const [forgotExtras, setForgotExtras] = useState<{ devResetUrl?: string; mailError?: string } | null>(null);
 
   useEffect(() => {
     if (!resetToken) return;
@@ -33,6 +34,7 @@ export function LoginPage() {
     setMode('signin');
     setError(null);
     setSuccess(null);
+    setForgotExtras(null);
     setResetToken('');
     setNewPassword('');
     setConfirmNewPw('');
@@ -49,9 +51,24 @@ export function LoginPage() {
         return;
       }
       setLoading(true);
+      setForgotExtras(null);
       try {
         const res = await api.forgotPassword(email);
-        setSuccess(res.message || 'Check your email for reset instructions.');
+        const base = res.message || 'If an account exists for that email, we sent password reset instructions.';
+        if (res.mailConfigured === false) {
+          setSuccess(
+            `${base}\n\nOutbound email is not configured on this server (set SMTP_HOST and related variables in the API environment). No reset email can be sent until an administrator configures SMTP.`,
+          );
+        } else if (res.emailSent === false) {
+          setSuccess(
+            `${base}\n\nThe server could not send the message (check SMTP settings and server logs). If you are running locally, a reset link may appear below.`,
+          );
+          if (res.devResetUrl || res.mailError) {
+            setForgotExtras({ devResetUrl: res.devResetUrl, mailError: res.mailError });
+          }
+        } else {
+          setSuccess(base);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Request failed');
       } finally {
@@ -203,6 +220,17 @@ export function LoginPage() {
 
           {error && <p className="login-error">{error}</p>}
           {success && <p className="login-success">{success}</p>}
+          {mode === 'forgot' && forgotExtras?.mailError && (
+            <p className="login-error login-smtp-hint">SMTP error: {forgotExtras.mailError}</p>
+          )}
+          {mode === 'forgot' && forgotExtras?.devResetUrl && (
+            <div className="login-dev-reset">
+              <p className="login-dev-reset-title">Local reset link (email failed — use within 1 hour)</p>
+              <a className="login-dev-reset-link" href={forgotExtras.devResetUrl}>
+                {forgotExtras.devResetUrl}
+              </a>
+            </div>
+          )}
 
           {!(mode === 'forgot' && success) && (
             <button className="btn btn-primary btn-full" type="submit" disabled={loading}>
@@ -228,6 +256,7 @@ export function LoginPage() {
                 setMode('forgot');
                 setError(null);
                 setSuccess(null);
+                setForgotExtras(null);
               }}
             >
               Forgot password?

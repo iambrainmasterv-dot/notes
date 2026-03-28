@@ -198,15 +198,15 @@ export function buildParentPickerOptions(
   const exclude = opts.excludeIds ?? new Set<string>();
   const dailyOnly = opts.dailyOnly ?? false;
 
-  const noteOk = (n: Note) => !exclude.has(n.id) && (!dailyOnly || n.daily);
-  const taskOk = (t: Task) => !exclude.has(t.id) && (!dailyOnly || t.daily);
+  const noteOk = (n: Note) => !n.completed && !exclude.has(n.id) && (!dailyOnly || n.daily);
+  const taskOk = (t: Task) => !t.completed && !exclude.has(t.id) && (!dailyOnly || t.daily);
 
   const out: ParentPickerOption[] = [];
 
   const walk = (item: Note | Task, depth: number) => {
     if (item.type === 'note') {
       const n = item as Note;
-      if (!noteOk(n)) return;
+      if (n.completed || !noteOk(n)) return;
       out.push({
         value: `note:${n.id}`,
         kind: 'note',
@@ -220,7 +220,7 @@ export function buildParentPickerOptions(
       [...childTasks].sort(byTitle).forEach((ch) => walk(ch, depth + 1));
     } else {
       const t = item as Task;
-      if (!taskOk(t)) return;
+      if (t.completed || !taskOk(t)) return;
       out.push({
         value: `task:${t.id}`,
         kind: 'task',
@@ -239,6 +239,48 @@ export function buildParentPickerOptions(
   [...tasks.filter((t) => isRootTask(t) && taskOk(t))].sort(byTitle).forEach((t) => walk(t, 0));
 
   return out;
+}
+
+/**
+ * Flatten note/task tree for list “masonry” layout: each card is its own column fragment.
+ * Notes respect `collapsed`; task subtrees are always expanded in the flat list.
+ */
+export function flattenItemsForListMasonry(
+  roots: Item[],
+  notes: Note[],
+  tasks: Task[],
+): Array<{ item: Note | Task; depth: number }> {
+  const out: Array<{ item: Note | Task; depth: number }> = [];
+
+  function visitNote(n: Note, depth: number) {
+    if (n.completed) return;
+    out.push({ item: n, depth });
+    if (n.collapsed) return;
+    const { childNotes, childTasks } = childrenOf({ type: 'note', id: n.id }, notes, tasks);
+    [...childNotes].filter((c) => !c.completed).sort(byTitle).forEach((ch) => visitNote(ch, depth + 1));
+    [...childTasks].filter((c) => !c.completed).sort(byTitle).forEach((ch) => visitTask(ch, depth + 1));
+  }
+
+  function visitTask(t: Task, depth: number) {
+    if (t.completed) return;
+    out.push({ item: t, depth });
+    const { childNotes, childTasks } = childrenOf({ type: 'task', id: t.id }, notes, tasks);
+    [...childNotes].filter((c) => !c.completed).sort(byTitle).forEach((ch) => visitNote(ch, depth + 1));
+    [...childTasks].filter((c) => !c.completed).sort(byTitle).forEach((ch) => visitTask(ch, depth + 1));
+  }
+
+  for (const it of roots) {
+    if (it.type === 'note') visitNote(it as Note, 0);
+    else visitTask(it as Task, 0);
+  }
+  return out;
+}
+
+export function formatCompletedAt(iso: string | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString();
 }
 
 export function parseParentPickerValue(raw: string): { type: ParentType; id: string } | null {

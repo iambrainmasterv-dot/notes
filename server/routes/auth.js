@@ -32,6 +32,12 @@ function checkForgotRateLimit(ip) {
 const FORGOT_OK_MESSAGE =
   'If an account exists for that email, we sent password reset instructions. Check your inbox.';
 
+function allowDevPasswordResetLink() {
+  return (
+    process.env.NODE_ENV !== 'production' || String(process.env.DEV_PASSWORD_RESET_LINK || '').toLowerCase() === 'true'
+  );
+}
+
 router.post('/signup', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
@@ -88,17 +94,24 @@ router.post('/forgot-password', async (req, res) => {
     return res.status(429).json({ error: 'Too many reset requests. Try again in a few minutes.' });
   }
 
+  const mailConfigured = isSmtpConfigured();
+
   try {
     const { rows } = await pool.query('SELECT id, email FROM users WHERE email = $1', [email]);
     if (rows.length === 0) {
-      return res.json({ ok: true, message: FORGOT_OK_MESSAGE });
+      return res.json({ ok: true, message: FORGOT_OK_MESSAGE, mailConfigured });
     }
 
     const user = rows[0];
 
-    if (!isSmtpConfigured()) {
+    if (!mailConfigured) {
       console.warn('[auth] forgot-password: SMTP not configured; reset email not sent');
-      return res.json({ ok: true, message: FORGOT_OK_MESSAGE });
+      return res.json({
+        ok: true,
+        message: FORGOT_OK_MESSAGE,
+        mailConfigured: false,
+        emailSent: false,
+      });
     }
 
     await pool.query('DELETE FROM password_reset_tokens WHERE user_id = $1', [user.id]);
@@ -115,18 +128,34 @@ router.post('/forgot-password', async (req, res) => {
     const base = (process.env.APP_PUBLIC_URL || 'http://localhost:5173').replace(/\/$/, '');
     const resetUrl = `${base}/?reset=${encodeURIComponent(rawToken)}`;
 
-    try {
-      const { sent } = await sendPasswordResetEmail({ to: user.email, resetUrl });
-      if (!sent) {
+    const devLinkOk = allowDevPasswordResetLink();
+    let emailSent = false;
+    let mailError;
+
+    const result = await sendPasswordResetEmail({ to: user.email, resetUrl });
+    emailSent = Boolean(result.sent);
+    mailError = result.error;
+
+    if (!emailSent) {
+      console.warn('[auth] forgot-password: email not sent', mailError || '');
+      if (!devLinkOk) {
         await pool.query('DELETE FROM password_reset_tokens WHERE user_id = $1', [user.id]);
-        console.warn('[auth] forgot-password: email transport failed to send');
+      } else {
+        console.warn(
+          '[auth] forgot-password: keeping reset token for local dev — open reset link from API response or server logs',
+        );
+        console.warn('[auth] dev reset URL:', resetUrl);
       }
-    } catch (mailErr) {
-      await pool.query('DELETE FROM password_reset_tokens WHERE user_id = $1', [user.id]);
-      console.error('[auth] forgot-password: send failed', mailErr);
     }
 
-    return res.json({ ok: true, message: FORGOT_OK_MESSAGE });
+    return res.json({
+      ok: true,
+      message: FORGOT_OK_MESSAGE,
+      mailConfigured: true,
+      emailSent,
+      ...(mailError && devLinkOk ? { mailError } : {}),
+      ...(devLinkOk && !emailSent ? { devResetUrl: resetUrl } : {}),
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });

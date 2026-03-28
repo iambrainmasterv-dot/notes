@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import type { Note, Task, ViewMode, SortField, SortDir } from '../types';
+import type { Note, Task, Item, ViewMode, SortField, SortDir } from '../types';
 import { TaskCard } from '../components/TaskCard';
+import { NoteCard } from '../components/NoteCard';
 import { Modal } from '../components/Modal';
 import { DeadlinePicker } from '../components/DeadlinePicker';
 import { SearchBar } from '../components/SearchBar';
@@ -9,7 +10,7 @@ import { DeadlineBadge } from '../components/DeadlineBadge';
 import { ItemOriginBadges } from '../components/ItemOriginBadges';
 import { ProgressBar } from '../components/ProgressBar';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { isExpired, itemOriginRowClass, buildParentPickerOptions, parseParentPickerValue, effectiveTaskParentType } from '../utils';
+import { isExpired, itemOriginRowClass, buildParentPickerOptions, parseParentPickerValue, effectiveTaskParentType, flattenItemsForListMasonry } from '../utils';
 import { useTick } from '../hooks/useTick';
 
 interface Props {
@@ -104,6 +105,11 @@ export function TasksPage({
         return true;
       }),
     [filtered],
+  );
+
+  const listMasonryRows = useMemo(
+    () => flattenItemsForListMasonry(topLevel as Item[], notes, tasks),
+    [topLevel, notes, tasks],
   );
 
   const resetForm = () => {
@@ -205,17 +211,51 @@ export function TasksPage({
       </div>
 
       {viewMode === 'list' && (
-        <div className="card-grid">
-          {topLevel.length === 0 && <p className="empty-state">No tasks yet. Create one!</p>}
-          {topLevel.map((task) => (
-            <TaskCard key={task.id} task={task} allNotes={notes} allTasks={tasks} now={now}
-              onUpdate={updateTask} onUpdateNote={updateNote}
-              onCompleteNote={completeNote} onCompleteTask={completeTask}
-              onDeleteNote={deleteNote} onDeleteTask={deleteTask}
-              onToggleCollapse={handleToggleCollapse}
-              addNote={addNote} addTask={addTask}
-              allowParentEdit />
-          ))}
+        <div className="card-grid card-grid--masonry">
+          {listMasonryRows.length === 0 && <p className="empty-state">No tasks yet. Create one!</p>}
+          {listMasonryRows.map(({ item, depth }) =>
+            item.type === 'task' ? (
+              <TaskCard
+                key={item.id}
+                task={item}
+                allNotes={notes}
+                allTasks={tasks}
+                now={now}
+                onUpdate={updateTask}
+                onUpdateNote={updateNote}
+                onCompleteNote={completeNote}
+                onCompleteTask={completeTask}
+                onDeleteNote={deleteNote}
+                onDeleteTask={deleteTask}
+                onToggleCollapse={handleToggleCollapse}
+                addNote={addNote}
+                addTask={addTask}
+                allowParentEdit
+                nestDepth={depth}
+                embedSubitems={false}
+              />
+            ) : (
+              <NoteCard
+                key={item.id}
+                note={item}
+                allNotes={notes}
+                allTasks={tasks}
+                now={now}
+                onCompleteNote={completeNote}
+                onCompleteTask={completeTask}
+                onDeleteNote={deleteNote}
+                onDeleteTask={deleteTask}
+                onToggleCollapse={handleToggleCollapse}
+                onUpdateNote={updateNote}
+                onUpdateTask={updateTask}
+                addNote={addNote}
+                addTask={addTask}
+                allowParentEdit
+                nestDepth={depth}
+                embedSubitems={false}
+              />
+            ),
+          )}
         </div>
       )}
 

@@ -7,9 +7,10 @@ interface Props {
   onDirChange: (d: SortDir) => void;
   showProgress?: boolean;
   showType?: boolean;
+  showCompletedAt?: boolean;
 }
 
-export function SortControls({ field, dir, onFieldChange, onDirChange, showProgress, showType }: Props) {
+export function SortControls({ field, dir, onFieldChange, onDirChange, showProgress, showType, showCompletedAt }: Props) {
   return (
     <div className="sort-controls">
       <label>Sort by</label>
@@ -17,6 +18,7 @@ export function SortControls({ field, dir, onFieldChange, onDirChange, showProgr
         <option value="title">Title</option>
         <option value="deadline">Deadline</option>
         <option value="createdAt">Created</option>
+        {showCompletedAt && <option value="completedAt">Completed</option>}
         {showProgress && <option value="progress">Progress</option>}
         {showType && <option value="type">Type</option>}
       </select>

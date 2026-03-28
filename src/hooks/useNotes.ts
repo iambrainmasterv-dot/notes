@@ -12,6 +12,7 @@ function toApi(n: Note) {
     title: n.title,
     description: n.description,
     completed: n.completed,
+    completed_at: n.completedAt ?? null,
     created_at: n.createdAt,
     deadline: n.deadline ?? null,
     parent_id: n.parentId ?? null,
@@ -32,6 +33,7 @@ function fromApi(row: Record<string, unknown>): Note {
     title: row.title as string,
     description: row.description as string,
     completed: row.completed as boolean,
+    completedAt: (row.completed_at as string) || undefined,
     createdAt: row.created_at as string,
     deadline: (row.deadline as string) || undefined,
     parentId: (row.parent_id as string) || undefined,
@@ -94,6 +96,7 @@ export function useNotes() {
     if (patch.title !== undefined) dbPatch.title = patch.title;
     if (patch.description !== undefined) dbPatch.description = patch.description;
     if (patch.completed !== undefined) dbPatch.completed = patch.completed;
+    if (patch.completedAt !== undefined) dbPatch.completed_at = patch.completedAt ?? null;
     if (patch.deadline !== undefined) dbPatch.deadline = patch.deadline ?? null;
     if (patch.parentId !== undefined) dbPatch.parent_id = patch.parentId ?? null;
     if (patch.parentType !== undefined) dbPatch.parent_type = patch.parentType ?? null;
@@ -110,13 +113,14 @@ export function useNotes() {
   }, []);
 
   const completeNote = useCallback((id: string) => {
-    setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, completed: true } : n)));
-    api.updateNote(id, { completed: true }).catch(() => {});
+    const ts = new Date().toISOString();
+    setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, completed: true, completedAt: ts } : n)));
+    api.updateNote(id, { completed: true, completed_at: ts }).catch(() => {});
   }, []);
 
   const recoverNote = useCallback((id: string) => {
-    setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, completed: false } : n)));
-    api.updateNote(id, { completed: false }).catch(() => {});
+    setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, completed: false, completedAt: undefined } : n)));
+    api.updateNote(id, { completed: false, completed_at: null }).catch(() => {});
   }, []);
 
   return { notes, addNote, updateNote, deleteNote, completeNote, recoverNote, setNotes, refetch };

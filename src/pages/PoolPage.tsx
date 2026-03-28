@@ -8,7 +8,7 @@ import { SortControls } from '../components/SortControls';
 import { DeadlineBadge } from '../components/DeadlineBadge';
 import { ProgressBar } from '../components/ProgressBar';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { isExpired, itemOriginRowClass, itemShownAsRootInFiltered } from '../utils';
+import { isExpired, itemOriginRowClass, itemShownAsRootInFiltered, flattenItemsForListMasonry } from '../utils';
 import { useTick } from '../hooks/useTick';
 
 interface Props {
@@ -79,6 +79,11 @@ export function PoolPage({
     const ids = new Set(filtered.map((i) => i.id));
     return filtered.filter((item) => itemShownAsRootInFiltered(item, ids));
   }, [filtered]);
+
+  const listMasonryRows = useMemo(
+    () => flattenItemsForListMasonry(visibleFiltered, notes, tasks),
+    [visibleFiltered, notes, tasks],
+  );
 
   const handleToggleCollapse = (id: string) => {
     const note = notes.find((n) => n.id === id);
@@ -187,30 +192,51 @@ export function PoolPage({
       </div>
 
       {viewMode === 'list' && (
-        <div className="card-grid">
-          {visibleFiltered.length === 0 && <p className="empty-state">No active items. Everything is completed!</p>}
-          {visibleFiltered.map((item) => {
-            if (item.type === 'note') {
-              return (
-                <NoteCard key={item.id} note={item as Note} allNotes={notes} allTasks={tasks} now={now}
-                  onCompleteNote={completeNote} onCompleteTask={completeTask}
-                  onDeleteNote={deleteNote} onDeleteTask={deleteTask}
-                  onToggleCollapse={handleToggleCollapse}
-                  onUpdateNote={updateNote} onUpdateTask={updateTask}
-                  addNote={addNote} addTask={addTask}
-                  allowParentEdit />
-              );
-            }
-            return (
-              <TaskCard key={item.id} task={item as Task} allNotes={notes} allTasks={tasks} now={now}
-                onUpdate={updateTask} onUpdateNote={updateNote}
-                onCompleteNote={completeNote} onCompleteTask={completeTask}
-                onDeleteNote={deleteNote} onDeleteTask={deleteTask}
+        <div className="card-grid card-grid--masonry">
+          {listMasonryRows.length === 0 && <p className="empty-state">No active items. Everything is completed!</p>}
+          {listMasonryRows.map(({ item, depth }) =>
+            item.type === 'note' ? (
+              <NoteCard
+                key={item.id}
+                note={item as Note}
+                allNotes={notes}
+                allTasks={tasks}
+                now={now}
+                onCompleteNote={completeNote}
+                onCompleteTask={completeTask}
+                onDeleteNote={deleteNote}
+                onDeleteTask={deleteTask}
                 onToggleCollapse={handleToggleCollapse}
-                addNote={addNote} addTask={addTask}
-                allowParentEdit />
-            );
-          })}
+                onUpdateNote={updateNote}
+                onUpdateTask={updateTask}
+                addNote={addNote}
+                addTask={addTask}
+                allowParentEdit
+                nestDepth={depth}
+                embedSubitems={false}
+              />
+            ) : (
+              <TaskCard
+                key={item.id}
+                task={item as Task}
+                allNotes={notes}
+                allTasks={tasks}
+                now={now}
+                onUpdate={updateTask}
+                onUpdateNote={updateNote}
+                onCompleteNote={completeNote}
+                onCompleteTask={completeTask}
+                onDeleteNote={deleteNote}
+                onDeleteTask={deleteTask}
+                onToggleCollapse={handleToggleCollapse}
+                addNote={addNote}
+                addTask={addTask}
+                allowParentEdit
+                nestDepth={depth}
+                embedSubitems={false}
+              />
+            ),
+          )}
         </div>
       )}
 
