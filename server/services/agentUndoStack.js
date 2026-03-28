@@ -214,9 +214,10 @@ async function restoreScheduleTemplateState(userId, tpl, items) {
   if (tpl.user_id && tpl.user_id !== userId) throw new Error('undo: user mismatch');
   await pool.query('DELETE FROM schedule_template_items WHERE template_id = $1', [tpl.id]);
   await pool.query('DELETE FROM schedule_templates WHERE id = $1 AND user_id = $2', [tpl.id, userId]);
+  const rulesJson = JSON.stringify(tpl.schedule_rules && typeof tpl.schedule_rules === 'object' ? tpl.schedule_rules : {});
   await pool.query(
-    `INSERT INTO schedule_templates (id, user_id, name, description, schedule_kind, schedule_value, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    `INSERT INTO schedule_templates (id, user_id, name, description, schedule_kind, schedule_value, schedule_rules, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8)`,
     [
       tpl.id,
       userId,
@@ -224,6 +225,7 @@ async function restoreScheduleTemplateState(userId, tpl, items) {
       tpl.description ?? '',
       tpl.schedule_kind,
       tpl.schedule_value ?? null,
+      rulesJson,
       tpl.created_at || new Date().toISOString(),
     ],
   );

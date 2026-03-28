@@ -459,6 +459,28 @@ body {
   font-style: italic;
 }
 
+.assistant-proposal-actions {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.assistant-proposal-hint {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.assistant-proposal-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
 .assistant-pending {
   display: flex;
   flex-direction: column;

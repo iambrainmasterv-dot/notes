@@ -1,8 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { v4 as uuid } from 'uuid';
-import type { ScheduleTemplate, ScheduleTemplateItem, ScheduleKind } from '../types';
+import type { ScheduleTemplate, ScheduleTemplateItem, ScheduleKind, ScheduleRules, Weekday } from '../types';
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthProvider';
+import { normalizeWeekdayToken, normalizeYearlyDate } from '../utils/scheduleTemplate';
 
 interface RawItem {
   id: string;
@@ -18,19 +19,42 @@ interface RawTemplate {
   id: string;
   name: string;
   description: string;
-  schedule_kind: ScheduleKind;
+  schedule_kind: string;
   schedule_value: string | null;
+  schedule_rules?: unknown;
   created_at: string;
   items: RawItem[];
 }
 
+function coerceKind(k: string): ScheduleKind {
+  const s = (k || 'none').toLowerCase();
+  if (s === 'weekday') return 'weekdays';
+  if (s === 'date') return 'more';
+  if (['none', 'daily', 'weekdays', 'dates', 'more'].includes(s)) return s as ScheduleKind;
+  return 'none';
+}
+
 function fromApi(raw: RawTemplate): ScheduleTemplate {
+  let rules: ScheduleRules =
+    raw.schedule_rules && typeof raw.schedule_rules === 'object'
+      ? { ...(raw.schedule_rules as ScheduleRules) }
+      : {};
+  const kind = coerceKind(raw.schedule_kind);
+  if (kind === 'weekdays' && (!rules.weekdays || rules.weekdays.length === 0) && raw.schedule_value) {
+    const w = normalizeWeekdayToken(raw.schedule_value);
+    if (w) rules = { ...rules, weekdays: [w as Weekday] };
+  }
+  if (kind === 'more' && (!rules.yearlyDates || rules.yearlyDates.length === 0) && raw.schedule_value) {
+    const y = normalizeYearlyDate(raw.schedule_value);
+    if (y) rules = { ...rules, yearlyDates: [y] };
+  }
   return {
     id: raw.id,
     name: raw.name,
     description: raw.description,
-    scheduleKind: raw.schedule_kind,
+    scheduleKind: kind,
     scheduleValue: raw.schedule_value,
+    scheduleRules: rules,
     createdAt: raw.created_at,
     items: (raw.items || []).map((it) => ({
       id: it.id,
@@ -49,6 +73,7 @@ export interface NewScheduleTemplateData {
   description: string;
   scheduleKind: ScheduleKind;
   scheduleValue: string | null;
+  scheduleRules: ScheduleRules;
   items: Omit<ScheduleTemplateItem, 'id' | 'sortOrder'>[];
 }
 
@@ -60,9 +85,12 @@ export function useScheduleTemplates() {
   useEffect(() => {
     if (!user || loaded.current) return;
     loaded.current = true;
-    api.getScheduleTemplates().then((rows) => {
-      setTemplates((rows as unknown as RawTemplate[]).map(fromApi));
-    }).catch(() => {});
+    api
+      .getScheduleTemplates()
+      .then((rows) => {
+        setTemplates((rows as unknown as RawTemplate[]).map(fromApi));
+      })
+      .catch(() => {});
   }, [user]);
 
   const addTemplate = useCallback(async (data: NewScheduleTemplateData) => {
@@ -76,14 +104,15 @@ export function useScheduleTemplates() {
       target: it.target ?? null,
       sort_order: i,
     }));
-    const raw = await api.createScheduleTemplate({
+    const raw = (await api.createScheduleTemplate({
       id,
       name: data.name,
       description: data.description,
       schedule_kind: data.scheduleKind,
       schedule_value: data.scheduleValue,
+      schedule_rules: data.scheduleRules,
       items,
-    }) as unknown as RawTemplate;
+    })) as unknown as RawTemplate;
     const tpl = fromApi(raw);
     setTemplates((prev) => [...prev, tpl]);
     return tpl;
@@ -100,6 +129,7 @@ export function useScheduleTemplates() {
     if (patch.description !== undefined) apiPatch.description = patch.description;
     if (patch.scheduleKind !== undefined) apiPatch.schedule_kind = patch.scheduleKind;
     if (patch.scheduleValue !== undefined) apiPatch.schedule_value = patch.scheduleValue;
+    if (patch.scheduleRules !== undefined) apiPatch.schedule_rules = patch.scheduleRules;
     if (patch.items !== undefined) {
       apiPatch.items = patch.items.map((it, i) => ({
         id: uuid(),
@@ -112,7 +142,6 @@ export function useScheduleTemplates() {
       }));
     }
     await api.updateScheduleTemplate(id, apiPatch).catch(() => {});
-    // Refetch for simplicity
     const rows = await api.getScheduleTemplates().catch(() => []);
     setTemplates((rows as unknown as RawTemplate[]).map(fromApi));
   }, []);

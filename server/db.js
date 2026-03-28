@@ -107,8 +107,9 @@ export async function initDb() {
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       name TEXT NOT NULL DEFAULT '',
       description TEXT NOT NULL DEFAULT '',
-      schedule_kind TEXT NOT NULL DEFAULT 'none' CHECK (schedule_kind IN ('weekday', 'date', 'none')),
+      schedule_kind TEXT NOT NULL DEFAULT 'none' CHECK (schedule_kind IN ('none', 'daily', 'weekdays', 'dates', 'more')),
       schedule_value TEXT,
+      schedule_rules JSONB NOT NULL DEFAULT '{}'::jsonb,
       created_at TIMESTAMPTZ DEFAULT now()
     );
 
@@ -142,6 +143,30 @@ export async function initDb() {
     .query(
       'ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS ai_agent_mutations_enabled BOOLEAN NOT NULL DEFAULT true',
     )
+    .catch(() => {});
+
+  await pool.query('ALTER TABLE schedule_templates ADD COLUMN IF NOT EXISTS schedule_rules JSONB DEFAULT \'{}\'::jsonb').catch(() => {});
+
+  await pool.query(`
+    UPDATE schedule_templates
+    SET schedule_kind = 'weekdays',
+        schedule_rules = jsonb_build_object('weekdays', jsonb_build_array(lower(trim(schedule_value))))
+    WHERE schedule_kind = 'weekday' AND schedule_value IS NOT NULL AND trim(schedule_value) != ''
+  `).catch(() => {});
+
+  await pool.query(`
+    UPDATE schedule_templates
+    SET schedule_kind = 'more',
+        schedule_rules = jsonb_build_object('yearlyDates', jsonb_build_array(schedule_value))
+    WHERE schedule_kind = 'date' AND schedule_value IS NOT NULL AND trim(schedule_value) != ''
+  `).catch(() => {});
+
+  await pool.query('ALTER TABLE schedule_templates DROP CONSTRAINT IF EXISTS schedule_templates_schedule_kind_check').catch(() => {});
+  await pool
+    .query(`
+    ALTER TABLE schedule_templates ADD CONSTRAINT schedule_templates_schedule_kind_check
+    CHECK (schedule_kind IN ('none', 'daily', 'weekdays', 'dates', 'more'))
+  `)
     .catch(() => {});
 
   await pool.query(`

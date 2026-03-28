@@ -94,7 +94,14 @@ export interface Preset {
 }
 
 export type Weekday = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
-export type ScheduleKind = 'weekday' | 'date' | 'none';
+/** none = stored only; daily = every day; weekdays = chosen week days; dates = days 1–31 each month; more = yearly MM-DD list */
+export type ScheduleKind = 'none' | 'daily' | 'weekdays' | 'dates' | 'more';
+
+export interface ScheduleRules {
+  weekdays?: Weekday[];
+  monthDays?: number[];
+  yearlyDates?: string[];
+}
 
 export interface ScheduleTemplateItem {
   id: string;
@@ -111,7 +118,9 @@ export interface ScheduleTemplate {
   name: string;
   description: string;
   scheduleKind: ScheduleKind;
+  /** Legacy single value; prefer scheduleRules for weekdays / dates / more */
   scheduleValue: string | null;
+  scheduleRules: ScheduleRules;
   items: ScheduleTemplateItem[];
   createdAt: string;
 }

@@ -1,5 +1,10 @@
-import { AGENT_TOOL_DEFINITIONS, runAgentTool } from './agentExecutor.js';
-import { mergeWorkContext } from './intentPolicy.js';
+import {
+  AGENT_TOOL_DEFINITIONS,
+  runAgentTool,
+  isMutatingAgentTool,
+  buildPendingMutationEntry,
+} from './agentExecutor.js';
+import { mergeWorkContext, isClearMutationIntent } from './intentPolicy.js';
 import { ollamaFetchExtraHeaders } from './ollamaTunnelHeaders.js';
 
 const MAX_CLIENT_MESSAGES = 48;
@@ -52,7 +57,29 @@ function sanitizeClientMessages(messages) {
   return out;
 }
 
-function buildSystemPrompt({ clientIsoTime, tzOffsetMinutes, mutationsEnabled }) {
+/**
+ * @param {{ mode?: string; previousPending?: unknown[] }} [followUp]
+ */
+function buildFollowUpSystemAppend(followUp) {
+  if (!followUp || typeof followUp !== 'object') return '';
+  const mode = String(followUp.mode || '').toLowerCase();
+  if (mode === 'deny') {
+    return `
+
+## Internal instruction (not shown to the user)
+The user **declined** the proposed changes to their notes, tasks, or schedule templates in the Jarvis panel. Reply naturally to their **actual question or chat** — do not assume they wanted data created. Avoid mutating tools unless they now clearly ask to change app data.`;
+  }
+  if (mode === 'redo') {
+    const prev = JSON.stringify(followUp.previousPending || []);
+    return `
+
+## Internal instruction (not shown to the user)
+The user wants a **different plan** for the same underlying request. Your previous proposed actions (still **not** applied) were: ${prev}. Propose a revised approach using tools where appropriate; ambiguous changes may be held for UI confirmation again.`;
+  }
+  return '';
+}
+
+function buildSystemPrompt({ clientIsoTime, tzOffsetMinutes, mutationsEnabled, followUpAppend = '' }) {
   const timeLine =
     clientIsoTime && typeof clientIsoTime === 'string'
       ? `User-reported local time (ISO): ${clientIsoTime}.`
@@ -63,27 +90,23 @@ function buildSystemPrompt({ clientIsoTime, tzOffsetMinutes, mutationsEnabled })
       : '';
 
   return [
-    'You are **Jarvis** — a capable general-purpose assistant running inside **NoteTasks** (sidebar: Pool, Schedule, Notes, Tasks, Completed, Jarvis, Settings). Behave like a strong modern LLM: you can chat naturally, reason step by step, plan, brainstorm, explain technical topics, help with writing, translate, tutor, and discuss almost any subject. The only special capability you have beyond a normal chat model is **integrated access to this user’s real notes, tasks, and schedule** through tools.',
+    'You are **Jarvis** — the in-app copilot for **NoteTasks** (Pool, Schedule, Notes, Tasks, Completed, Jarvis, Settings). You have a distinct voice: warm, quick-witted when it fits, never stiff. You genuinely enjoy good conversation.',
     '',
-    '## Conversation style (match the user)',
-    '- **Language**: Reply in the same language the user writes in (including mixed or non‑English). If unclear, use their strongest language from the message or ask once.',
-    '- **Depth**: Match their intent — terse when they want speed; long-form outlines, tables, numbered plans, or detailed prose when they ask for depth, “explain like I’m five”, a workout plan, a syllabus, etc.',
-    '- **Personas & tone**: If they ask you to sound like someone, adopt a role, or mimic a style, lean into it clearly while staying accurate and safe. You are not a licensed clinician, lawyer, or therapist; give general information and suggest qualified professionals when health, legal, or crisis topics need it.',
-    '- **Fitness & workouts**: Build plans around the **fitness level they state** (beginner / intermediate / advanced). Include warm-up, progression, rest, and form reminders where helpful. This is general fitness guidance, not medical diagnosis or treatment.',
+    '**Default to chat.** Most messages are ideas, venting, questions, or banter — answer like a strong general-purpose assistant (explain, brainstorm, joke lightly, tutor, translate). **Do not** reach for notes/tasks tools just because the user said something that *could* be a reminder; only use mutating tools when they **clearly** want their **in-app** data changed (or when they accepted a proposal in the UI — the server handles that).',
     '',
-    '## NoteTasks data — tools (non‑negotiable)',
-    '- Use tools for **any** read or write of their in-app data. Never invent note/task/template IDs — call **list_notes** and/or **list_tasks** (and schedule template tools as needed) before update/delete/nested create unless you already received the correct id in this turn.',
-    '- **Notes**: title + description; optional deadline (full datetime or HH:mm for daily). **Tasks**: title + **target** (number, default 1) + **progress**; same deadline rules. **Nesting**: parent_id + parent_type (note|task) matching the parent item.',
-    '- **daily:true** = same item every calendar day (Schedule “Daily”). **Mon–Fri or chosen weekdays only** → use **schedule templates** (e.g. create_schedule_template, weekday_preset monday_to_friday), **not** a single daily=true item (that repeats every day including weekends).',
-    '- To create in the app you **must** call **create_note** or **create_task** (with a title). Never claim something was created unless the tool result includes an id or clear success.',
-    '- **No in-app confirmation step** — creates, updates, and deletes apply immediately when mutations are enabled. If the user regrets a change, call **list_agent_undo** then **undo_agent_action** (optional **count** 1–5). Deletes and other mutations are recorded so you can restore them.',
-    '- If a tool says unknown tool or mutations disabled — report that honestly; do not claim success.',
-    '- Do **not** paste raw JSON tool-call payloads as the user-visible reply. There is no get_note/get_task single-fetch tool; use list_* tools.',
-    '- If mutations are disabled: tell them they can enable **Allow edits** under Settings → Jarvis.',
+    '## NoteTasks data — tools',
+    '- Use tools for **reads and writes** of their real in-app data only when relevant. Never invent IDs — call **list_notes** / **list_tasks** (and template list tools) before update/delete/nested create unless you already have the correct id in this turn.',
+    '- **Notes**: title + description; optional deadline (ISO or HH:mm for daily). **Tasks**: title + **target** (default 1) + **progress**; same deadlines. **Nesting**: parent_id + parent_type (note|task).',
+    '- **daily:true** = same item every calendar day (Schedule “Daily”). **Mon–Fri or chosen weekdays** → **schedule templates** with `schedule_kind: "weekdays"` and `schedule_rules.weekdays` (or `weekday_preset: monday_to_friday`) — **not** `daily:true` on a task.',
+    '- **Confirmation**: When the user’s intent to change data is **not** obvious, mutating tool calls are **held** until they tap **Accept** in the Jarvis panel. Your reply should list what you would do. When intent **is** obvious (clear “create/add/delete/update …” with enough detail), changes can apply immediately (if Allow edits is on). Never claim something was created/updated/deleted unless the tool result says so.',
+    '- If the user regrets a change: **list_agent_undo** then **undo_agent_action**.',
+    '- Do **not** paste raw JSON tool-call payloads as the user-visible reply.',
+    '- If mutations are disabled: say so and point to Settings → Jarvis → Allow edits.',
     `Mutations for this user are currently **${mutationsEnabled ? 'ENABLED' : 'DISABLED'}**.`,
     timeLine,
     tzLine,
-    'For authoritative UI/tab/deadline/template rules, call **get_app_capabilities** when unsure.',
+    'For authoritative rules, call **get_app_capabilities** when unsure.',
+    followUpAppend,
   ]
     .filter(Boolean)
     .join('\n');
@@ -195,6 +218,7 @@ async function ollamaChat(base, model, messages, tools) {
  * @param {number} [opts.tzOffsetMinutes]
  * @param {{ ai_agent_mutations_enabled?: boolean }} [opts.settingsRow]
  * @param {string} opts.ollamaBase - Ollama origin from OLLAMA_BASE_URL (server resolves before calling)
+ * @param {{ mode?: string; previousPending?: unknown[] }} [opts.followUp]
  */
 export async function runAgentChat(opts) {
   const base =
@@ -208,10 +232,11 @@ export async function runAgentChat(opts) {
   }
   const model = ollamaModel();
 
-  const { userId, clientIsoTime, tzOffsetMinutes, settingsRow } = opts;
+  const { userId, clientIsoTime, tzOffsetMinutes, settingsRow, followUp } = opts;
   const history = sanitizeClientMessages(opts.messages);
   const lastUser = [...history].reverse().find((m) => m.role === 'user');
   const mutationsEnabled = settingsRow?.ai_agent_mutations_enabled !== false;
+  const clearMutationIntent = isClearMutationIntent(lastUser?.content || '');
 
   const pendingConfirmations = [];
   const pendingMutations = [];
@@ -227,11 +252,18 @@ export async function runAgentChat(opts) {
     dirtyTemplates: dirty.templates,
   });
 
+  const followUpAppend = buildFollowUpSystemAppend(followUp);
+
   /** @type {object[]} */
   const ollamaMessages = [
     {
       role: 'system',
-      content: buildSystemPrompt({ clientIsoTime, tzOffsetMinutes, mutationsEnabled }),
+      content: buildSystemPrompt({
+        clientIsoTime,
+        tzOffsetMinutes,
+        mutationsEnabled,
+        followUpAppend,
+      }),
     },
     ...history.map((m) => ({ role: m.role, content: m.content })),
   ];
@@ -261,16 +293,35 @@ export async function runAgentChat(opts) {
       return { ...tc, id, type: tc?.type || 'function' };
     });
 
+    const shouldDeferMutations =
+      mutationsEnabled &&
+      !clearMutationIntent &&
+      toolCalls.some((tc) => isMutatingAgentTool(extractToolCall(tc).name));
+
     ollamaMessages.push({
       role: 'assistant',
       content: typeof msg.content === 'string' ? msg.content : '',
       tool_calls: toolCalls,
     });
 
+    let deferredThisRound = false;
+
     for (let i = 0; i < toolCalls.length; i++) {
       const tc = toolCalls[i];
       const { name, args } = extractToolCall(tc);
       const toolCallId = tc.id;
+
+      if (shouldDeferMutations && isMutatingAgentTool(name)) {
+        const entry = buildPendingMutationEntry(name, args);
+        pendingMutations.push(entry);
+        deferredThisRound = true;
+        ollamaMessages.push({
+          role: 'tool',
+          tool_call_id: toolCallId,
+          content: `[NOT_EXECUTED] Pending user confirmation in the Jarvis panel: ${entry.summary}. In your visible reply, list these planned changes and say they can tap Accept, Deny, or Redo.`,
+        });
+        continue;
+      }
 
       const { resultText, workContext: wc } = await runAgentTool(name, args, {
         userId,
@@ -285,6 +336,15 @@ export async function runAgentChat(opts) {
         tool_call_id: toolCallId,
         content: resultText,
       });
+    }
+
+    if (deferredThisRound && pendingMutations.length > 0) {
+      const assistantText = typeof msg.content === 'string' ? msg.content.trim() : '';
+      const planLines = pendingMutations.map((p) => `• ${p.summary}`).join('\n');
+      const fallbackMsg =
+        assistantText ||
+        `Here’s what I’d change in your app — review and tap **Accept** to apply, **Deny** if you were just thinking out loud, or **Redo** for a different plan:\n\n${planLines}`;
+      return pack({ message: fallbackMsg, workContext });
     }
   }
 

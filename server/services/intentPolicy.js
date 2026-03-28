@@ -2,7 +2,7 @@
  * Heuristic: user clearly asked to mutate data (not just brainstorming).
  */
 const MUTATION_VERBS =
-  /\b(add|create|make|new|insert|put|write|save|draft|record|log|delete|remove|trash|update|change|rename|edit|set|mark\s+complete|complete|finish|done)\b/i;
+  /\b(add|create|make|new|insert|put|write|save|draft|record|log|delete|remove|trash|update|change|rename|edit|set|mark\s+complete|complete|finish|done|undo|revert)\b/i;
 
 const SOFT =
   /\b(should i|could i|would it|what if|maybe|perhaps|recommend|suggest|ideas?|thoughts?|help me decide|do you think)\b/i;

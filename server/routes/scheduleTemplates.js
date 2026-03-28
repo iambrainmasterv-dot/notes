@@ -1,7 +1,14 @@
 import { Router } from 'express';
 import { pool } from '../db.js';
+import { templateMatchesOccurrence } from '../utils/scheduleTemplate.js';
 
 const router = Router();
+
+function jsonRules(val) {
+  if (val == null) return '{}';
+  if (typeof val === 'string') return val;
+  return JSON.stringify(val);
+}
 
 // GET all templates with nested items
 router.get('/', async (req, res) => {
@@ -22,11 +29,13 @@ router.get('/', async (req, res) => {
 
 // CREATE template + items in one go
 router.post('/', async (req, res) => {
-  const { id, name, description, schedule_kind, schedule_value, items } = req.body;
+  const { id, name, description, schedule_kind, schedule_value, schedule_rules, items } = req.body;
+  const kind = (schedule_kind ?? 'none').toString().toLowerCase();
+  const rulesJson = jsonRules(schedule_rules ?? {});
   await pool.query(
-    `INSERT INTO schedule_templates (id, user_id, name, description, schedule_kind, schedule_value)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [id, req.userId, name ?? '', description ?? '', schedule_kind ?? 'none', schedule_value ?? null],
+    `INSERT INTO schedule_templates (id, user_id, name, description, schedule_kind, schedule_value, schedule_rules)
+     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+    [id, req.userId, name ?? '', description ?? '', kind, schedule_value ?? null, rulesJson],
   );
   if (Array.isArray(items)) {
     for (let i = 0; i < items.length; i++) {
@@ -42,21 +51,28 @@ router.post('/', async (req, res) => {
     'SELECT * FROM schedule_template_items WHERE template_id = $1 ORDER BY sort_order',
     [id],
   );
-  const { rows: [template] } = await pool.query('SELECT * FROM schedule_templates WHERE id = $1', [id]);
+  const {
+    rows: [template],
+  } = await pool.query('SELECT * FROM schedule_templates WHERE id = $1', [id]);
   res.json({ ...template, items: items2 });
 });
 
 // UPDATE template metadata (and optionally replace items)
 router.patch('/:id', async (req, res) => {
-  const { name, description, schedule_kind, schedule_value, items } = req.body;
+  const { name, description, schedule_kind, schedule_value, schedule_rules, items } = req.body;
   const sets = [];
   const vals = [];
   let i = 1;
-  for (const [key, val] of Object.entries({ name, description, schedule_kind, schedule_value })) {
+  const meta = { name, description, schedule_kind, schedule_value };
+  for (const [key, val] of Object.entries(meta)) {
     if (val !== undefined) {
       sets.push(`${key} = $${i++}`);
-      vals.push(val);
+      vals.push(key === 'schedule_kind' ? String(val).toLowerCase() : val);
     }
+  }
+  if (schedule_rules !== undefined) {
+    sets.push(`schedule_rules = $${i++}::jsonb`);
+    vals.push(jsonRules(schedule_rules));
   }
   if (sets.length > 0) {
     vals.push(req.params.id, req.userId);
@@ -90,6 +106,15 @@ router.post('/materialize', async (req, res) => {
   const { template_id, occurrence_date } = req.body;
   if (!template_id || !occurrence_date) return res.status(400).json({ error: 'template_id and occurrence_date required' });
 
+  const {
+    rows: [tpl],
+  } = await pool.query('SELECT * FROM schedule_templates WHERE id = $1 AND user_id = $2', [template_id, req.userId]);
+  if (!tpl) return res.status(404).json({ error: 'template not found' });
+
+  if (!templateMatchesOccurrence(tpl, occurrence_date)) {
+    return res.json({ materialized: 0 });
+  }
+
   const { rows: existing } = await pool.query(
     `SELECT id FROM notes WHERE user_id = $1 AND source_schedule_template_id = $2 AND source_occurrence_date = $3
      UNION ALL
@@ -122,18 +147,49 @@ router.post('/materialize', async (req, res) => {
   res.json({ materialized: count });
 });
 
-// CLEANUP: delete all materialized notes/tasks for a specific occurrence date
+// CLEANUP: remove materialized template rows for a date only when template is not "none" and at least one item has a time
 router.post('/cleanup', async (req, res) => {
   const { occurrence_date } = req.body;
   if (!occurrence_date) return res.status(400).json({ error: 'occurrence_date required' });
-  await pool.query(
-    'DELETE FROM notes WHERE user_id = $1 AND source_occurrence_date = $2',
-    [req.userId, occurrence_date],
-  );
-  await pool.query(
-    'DELETE FROM tasks WHERE user_id = $1 AND source_occurrence_date = $2',
-    [req.userId, occurrence_date],
-  );
+
+  const noteSql = `
+    DELETE FROM notes n
+    WHERE n.user_id = $1
+      AND n.source_occurrence_date = $2::date
+      AND n.source_schedule_template_id IS NOT NULL
+      AND EXISTS (
+        SELECT 1 FROM schedule_templates t
+        WHERE t.id = n.source_schedule_template_id
+          AND t.user_id = n.user_id
+          AND lower(t.schedule_kind) <> 'none'
+          AND EXISTS (
+            SELECT 1 FROM schedule_template_items i
+            WHERE i.template_id = t.id
+              AND i.deadline_time IS NOT NULL
+              AND trim(i.deadline_time) <> ''
+          )
+      )
+  `;
+  const taskSql = `
+    DELETE FROM tasks tsk
+    WHERE tsk.user_id = $1
+      AND tsk.source_occurrence_date = $2::date
+      AND tsk.source_schedule_template_id IS NOT NULL
+      AND EXISTS (
+        SELECT 1 FROM schedule_templates t
+        WHERE t.id = tsk.source_schedule_template_id
+          AND t.user_id = tsk.user_id
+          AND lower(t.schedule_kind) <> 'none'
+          AND EXISTS (
+            SELECT 1 FROM schedule_template_items i
+            WHERE i.template_id = t.id
+              AND i.deadline_time IS NOT NULL
+              AND trim(i.deadline_time) <> ''
+          )
+      )
+  `;
+  await pool.query(noteSql, [req.userId, occurrence_date]);
+  await pool.query(taskSql, [req.userId, occurrence_date]);
   res.json({ ok: true });
 });
 

@@ -1,8 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
-import type { ScheduleTemplate, Weekday, Note, Task, ParentType } from '../types';
+import type { ScheduleTemplate, Note, Task, ParentType } from '../types';
 import { api } from '../api/client';
-
-const WEEKDAYS: Weekday[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+import { templateMatchesOccurrence } from '../utils/scheduleTemplate';
 
 function appDate(resetTime: string): Date {
   const now = new Date();
@@ -29,17 +28,14 @@ function prevAppDateStr(resetTime: string): string {
 }
 
 function matchesDay(template: ScheduleTemplate, dateStr: string): boolean {
-  if (template.scheduleKind === 'none') return false;
-  if (template.scheduleKind === 'weekday') {
-    const d = new Date(dateStr + 'T12:00:00');
-    const weekday = WEEKDAYS[d.getDay()];
-    return weekday === template.scheduleValue?.toLowerCase();
-  }
-  if (template.scheduleKind === 'date') {
-    const mmdd = dateStr.slice(5); // "MM-DD"
-    return mmdd === template.scheduleValue;
-  }
-  return false;
+  return templateMatchesOccurrence(
+    {
+      scheduleKind: template.scheduleKind,
+      scheduleRules: template.scheduleRules,
+      scheduleValue: template.scheduleValue,
+    },
+    dateStr,
+  );
 }
 
 interface Params {
@@ -61,58 +57,45 @@ export function useScheduleTemplateSync({ dailyResetTime, lastResetTag, template
     const rt = resetTimeRef.current;
     const today = appDateStr(rt);
     const yesterday = prevAppDateStr(rt);
-    const syncKey = `${today}|${rt}`;
+    const tpls = templatesRef.current;
+    const tplSig = tpls.map((t) => `${t.id}:${t.scheduleKind}:${JSON.stringify(t.scheduleRules || {})}`).join('|');
+    const syncKey = `${today}|${rt}|${tplSig}`;
 
     if (lastSyncRef.current === syncKey) return;
     lastSyncRef.current = syncKey;
 
-    // Cleanup: remove all items from yesterday's occurrence
     try {
       await api.cleanupOccurrence(yesterday);
-      // Also remove them from local state
-      setNotes((prev) => prev.filter((n) => {
-        const raw = n as unknown as Record<string, unknown>;
-        return !(raw.source_occurrence_date === yesterday || raw.sourceOccurrenceDate === yesterday);
-      }));
-      setTasks((prev) => prev.filter((t) => {
-        const raw = t as unknown as Record<string, unknown>;
-        return !(raw.source_occurrence_date === yesterday || raw.sourceOccurrenceDate === yesterday);
-      }));
     } catch {
-      // ignore cleanup errors
+      /* ignore */
     }
-
-    // Materialize: for each template that matches today
-    const tpls = templatesRef.current;
     for (const tpl of tpls) {
       if (matchesDay(tpl, today)) {
         try {
           await api.materializeScheduleTemplate(tpl.id, today);
         } catch {
-          // ignore
+          /* ignore */
         }
       }
     }
 
-    // Reload notes and tasks to get the new materialized rows
     try {
       const [rawNotes, rawTasks] = await Promise.all([api.getNotes(), api.getTasks()]);
-      // We need the fromApi converters from useNotes/useTasks, but we can do a lightweight conversion here
       setNotes(rawNotes.map(noteFromApi));
       setTasks(rawTasks.map(taskFromApi));
     } catch {
-      // ignore
+      /* ignore */
     }
   }, [setNotes, setTasks]);
 
-  // Run on mount and whenever lastResetTag changes (indicates a reset happened)
   useEffect(() => {
-    sync();
+    void sync();
   }, [sync, lastResetTag, templates]);
 
-  // Also run on a 30s interval to catch time transitions
   useEffect(() => {
-    const id = setInterval(sync, 30_000);
+    const id = setInterval(() => {
+      void sync();
+    }, 30_000);
     return () => clearInterval(id);
   }, [sync]);
 }

@@ -7,6 +7,9 @@ export interface AssistantPanelProps {
   loading: boolean;
   error: string | null;
   onSend: (text: string) => void;
+  onAcceptProposal: (messageIndex: number) => void | Promise<void>;
+  onDenyProposal: (messageIndex: number) => void | Promise<void>;
+  onRedoProposal: (messageIndex: number) => void | Promise<void>;
   onDismissError: () => void;
   ollamaAvailable: boolean | null;
   ollamaCheckPending: boolean;
@@ -23,6 +26,9 @@ export function AssistantPanel({
   loading,
   error,
   onSend,
+  onAcceptProposal,
+  onDenyProposal,
+  onRedoProposal,
   onDismissError,
   ollamaAvailable,
   ollamaCheckPending,
@@ -128,14 +134,50 @@ export function AssistantPanel({
           <div className="assistant-messages">
             {messages.length === 0 && !loading && (
               <p className="assistant-empty">
-                Ask Jarvis about your notes and tasks, or say e.g. “create a note …” / “write a task …”. Edits apply right
-                away when <strong>Allow edits</strong> is on — you can ask Jarvis to <strong>undo</strong> recent changes.
+                Chat about anything — Jarvis only changes your notes, tasks, or schedule when you clearly ask, or when you
+                tap <strong>Accept</strong> on a proposed plan. With <strong>Allow edits</strong> on, clear requests can
+                apply right away; ambiguous ones get a review step first. Jarvis can <strong>undo</strong> recent changes on
+                request.
               </p>
             )}
             {messages.map((m, i) => (
               <div key={i} className={`assistant-bubble assistant-bubble--${m.role}`}>
                 <div className="assistant-bubble-label">{m.role === 'user' ? 'You' : 'Jarvis'}</div>
                 <div className="assistant-bubble-text">{m.content}</div>
+                {m.role === 'assistant' &&
+                  m.proposalOpen &&
+                  mutationsEnabled &&
+                  (m.pendingMutations?.length ?? 0) > 0 && (
+                    <div className="assistant-proposal-actions">
+                      <span className="assistant-proposal-hint">Apply these changes?</span>
+                      <div className="assistant-proposal-buttons">
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          disabled={loading}
+                          onClick={() => void onAcceptProposal(i)}
+                        >
+                          Accept
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-ghost"
+                          disabled={loading}
+                          onClick={() => void onDenyProposal(i)}
+                        >
+                          Deny
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-ghost"
+                          disabled={loading}
+                          onClick={() => void onRedoProposal(i)}
+                        >
+                          Redo
+                        </button>
+                      </div>
+                    </div>
+                  )}
               </div>
             ))}
             {loading && (

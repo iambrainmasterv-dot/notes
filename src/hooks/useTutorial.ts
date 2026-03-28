@@ -36,7 +36,7 @@ const STEPS: TutorialStep[] = [
     skipTabKey: 'schedule',
     page: 'schedule',
     title: 'Schedule',
-    body: 'Daily items and templates live here. Templates add notes or tasks on matching weekdays or yearly dates.',
+    body: 'Daily items and templates live here. Templates can be none, daily, weekdays, dates (month days), or more (yearly dates).',
   },
   {
     skipTabKey: 'schedule',

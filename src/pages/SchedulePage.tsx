@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef } from 'react';
-import type { Note, Task, Item, ViewMode, SortField, SortDir, Preset, PresetItem, ScheduleTemplate, ScheduleKind, Weekday } from '../types';
+import type { Note, Task, Item, ViewMode, SortField, SortDir, Preset, PresetItem, ScheduleTemplate, ScheduleKind, Weekday, ScheduleRules } from '../types';
 import type { NewScheduleTemplateData } from '../hooks/useScheduleTemplates';
 import { NoteCard } from '../components/NoteCard';
 import { ItemOriginBadges } from '../components/ItemOriginBadges';
@@ -23,6 +23,12 @@ const WEEKDAY_LABELS: { value: Weekday; label: string }[] = [
   { value: 'saturday', label: 'Saturday' },
   { value: 'sunday', label: 'Sunday' },
 ];
+
+function emptyWeekdayPick(): Record<Weekday, boolean> {
+  const o = {} as Record<Weekday, boolean>;
+  for (const { value } of WEEKDAY_LABELS) o[value] = false;
+  return o;
+}
 
 interface DraftItem {
   key: string;
@@ -92,9 +98,11 @@ export function SchedulePage({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [tplName, setTplName] = useState('');
   const [tplDesc, setTplDesc] = useState('');
-  const [dayMode, setDayMode] = useState<'none' | 'weekday' | 'date'>('none');
-  const [selectedWeekday, setSelectedWeekday] = useState<Weekday>('monday');
-  const [selectedDate, setSelectedDate] = useState('');
+  const [scheduleMode, setScheduleMode] = useState<ScheduleKind>('none');
+  const [weekdayPick, setWeekdayPick] = useState<Record<Weekday, boolean>>(() => emptyWeekdayPick());
+  const [monthDays, setMonthDays] = useState<Set<number>>(new Set());
+  const [moreDates, setMoreDates] = useState<string[]>([]);
+  const [morePick, setMorePick] = useState('');
 
   const [confirmDeleteTpl, setConfirmDeleteTpl] = useState<string | null>(null);
   const [expandedTpl, setExpandedTpl] = useState<string | null>(null);
@@ -209,6 +217,11 @@ export function SchedulePage({
   const handleBuilderSubmit = () => {
     const validItems = draftItems.filter((d) => d.title.trim());
     if (validItems.length === 0) return;
+    setScheduleMode('none');
+    setWeekdayPick(emptyWeekdayPick());
+    setMonthDays(new Set());
+    setMoreDates([]);
+    setMorePick('');
     setConfirmOpen(true);
   };
 
@@ -217,15 +230,21 @@ export function SchedulePage({
     if (validItems.length === 0) return;
     if (!tplName.trim()) return;
 
-    let scheduleKind: ScheduleKind = 'none';
-    let scheduleValue: string | null = null;
-    if (dayMode === 'weekday') {
-      scheduleKind = 'weekday';
-      scheduleValue = selectedWeekday;
-    } else if (dayMode === 'date' && selectedDate) {
-      scheduleKind = 'date';
-      const parts = selectedDate.split('-');
-      scheduleValue = `${parts[1]}-${parts[2]}`;
+    let scheduleKind: ScheduleKind = scheduleMode;
+    const scheduleValue: string | null = null;
+    const scheduleRules: ScheduleRules = {};
+
+    if (scheduleMode === 'weekdays') {
+      const wd = WEEKDAY_LABELS.map((w) => w.value).filter((w) => weekdayPick[w]);
+      if (wd.length === 0) scheduleKind = 'none';
+      else scheduleRules.weekdays = wd;
+    } else if (scheduleMode === 'dates') {
+      const arr = Array.from(monthDays).sort((a, b) => a - b);
+      if (arr.length === 0) scheduleKind = 'none';
+      else scheduleRules.monthDays = arr;
+    } else if (scheduleMode === 'more') {
+      if (moreDates.length === 0) scheduleKind = 'none';
+      else scheduleRules.yearlyDates = [...moreDates].sort();
     }
 
     await addScheduleTemplate({
@@ -233,6 +252,7 @@ export function SchedulePage({
       description: tplDesc.trim(),
       scheduleKind,
       scheduleValue,
+      scheduleRules,
       items: validItems.map((d) => ({
         type: d.type,
         title: d.title.trim(),
@@ -247,9 +267,11 @@ export function SchedulePage({
     setDraftItems([emptyDraft()]);
     setTplName('');
     setTplDesc('');
-    setDayMode('none');
-    setSelectedWeekday('monday');
-    setSelectedDate('');
+    setScheduleMode('none');
+    setWeekdayPick(emptyWeekdayPick());
+    setMonthDays(new Set());
+    setMoreDates([]);
+    setMorePick('');
   };
 
   // ---- Preset logic ----
@@ -373,15 +395,25 @@ export function SchedulePage({
 
   // Schedule template helpers
   const scheduleLabel = (tpl: ScheduleTemplate) => {
-    if (tpl.scheduleKind === 'weekday') {
-      return `Every ${(tpl.scheduleValue ?? '').charAt(0).toUpperCase()}${(tpl.scheduleValue ?? '').slice(1)}`;
+    const r = tpl.scheduleRules || {};
+    const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+    if (tpl.scheduleKind === 'none') return 'No schedule';
+    if (tpl.scheduleKind === 'daily') return 'Daily';
+    if (tpl.scheduleKind === 'weekdays' && r.weekdays?.length) {
+      return `Weekdays: ${r.weekdays.map((w) => cap(w)).join(', ')}`;
     }
-    if (tpl.scheduleKind === 'date') {
-      const [mm, dd] = (tpl.scheduleValue ?? '').split('-');
-      const months = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      return `Every ${months[parseInt(mm)]} ${parseInt(dd)}`;
+    if (tpl.scheduleKind === 'dates' && r.monthDays?.length) {
+      return `Dates: ${r.monthDays.join(', ')}`;
     }
-    return 'No schedule';
+    if (tpl.scheduleKind === 'more' && r.yearlyDates?.length) {
+      return `More: ${r.yearlyDates.join(', ')}`;
+    }
+    if (tpl.scheduleValue) {
+      return tpl.scheduleKind === 'weekdays'
+        ? `Weekdays: ${cap(tpl.scheduleValue)}`
+        : `More: ${tpl.scheduleValue}`;
+    }
+    return 'Schedule';
   };
 
   return (
@@ -533,7 +565,10 @@ export function SchedulePage({
           </button>
         </div>
         <p className="text-muted" style={{ fontSize: '0.82rem', margin: '4px 0 12px' }}>
-          Templates with a schedule (weekday or date) automatically add items on matching days and remove them when the day ends.
+          Templates can be <strong>none</strong> (saved for later), <strong>daily</strong>, <strong>weekdays</strong>,{' '}
+          <strong>dates</strong> (days 1–31 each month), or <strong>more</strong> (yearly dates). Several templates can
+          apply the same day. Items with a <strong>time</strong> are removed after that app-day ends; no time means they
+          stay until you clear them.
         </p>
 
         {scheduleTemplates.length === 0 && <p className="empty-state" style={{ padding: '12px 0' }}>No schedule templates yet.</p>}
@@ -726,28 +761,97 @@ export function SchedulePage({
           <textarea className="input textarea" value={tplDesc} onChange={(e) => setTplDesc(e.target.value)} rows={2} placeholder="What is this template for?" />
         </div>
         <div className="form-group">
-          <label>Schedule (optional)</label>
-          <div className="theme-modes" style={{ marginBottom: 8 }}>
-            <button className={`theme-mode-btn ${dayMode === 'none' ? 'active' : ''}`} onClick={() => setDayMode('none')}>None</button>
-            <button className={`theme-mode-btn ${dayMode === 'weekday' ? 'active' : ''}`} onClick={() => setDayMode('weekday')}>Weekday</button>
-            <button className={`theme-mode-btn ${dayMode === 'date' ? 'active' : ''}`} onClick={() => setDayMode('date')}>Date</button>
+          <label>When to apply</label>
+          <div className="theme-modes" style={{ marginBottom: 8, flexWrap: 'wrap' }}>
+            {(
+              [
+                ['none', 'None'],
+                ['daily', 'Daily'],
+                ['weekdays', 'Weekdays'],
+                ['dates', 'Dates'],
+                ['more', 'More'],
+              ] as const
+            ).map(([v, label]) => (
+              <button
+                key={v}
+                type="button"
+                className={`theme-mode-btn ${scheduleMode === v ? 'active' : ''}`}
+                onClick={() => setScheduleMode(v)}
+              >
+                {label}
+              </button>
+            ))}
           </div>
-          {dayMode === 'weekday' && (
-            <select className="input" value={selectedWeekday} onChange={(e) => setSelectedWeekday(e.target.value as Weekday)}>
+          {scheduleMode === 'weekdays' && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {WEEKDAY_LABELS.map((w) => (
-                <option key={w.value} value={w.value}>{w.label}</option>
+                <button
+                  key={w.value}
+                  type="button"
+                  className={`btn btn-sm ${weekdayPick[w.value] ? 'btn-primary' : ''}`}
+                  onClick={() => setWeekdayPick((p) => ({ ...p, [w.value]: !p[w.value] }))}
+                >
+                  {w.label.slice(0, 3)}
+                </button>
               ))}
-            </select>
+            </div>
           )}
-          {dayMode === 'date' && (
-            <input className="input" type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
+          {scheduleMode === 'dates' && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxHeight: 120, overflowY: 'auto' }}>
+              {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  className={`btn btn-sm ${monthDays.has(d) ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ minWidth: 36 }}
+                  onClick={() =>
+                    setMonthDays((prev) => {
+                      const n = new Set(prev);
+                      if (n.has(d)) n.delete(d);
+                      else n.add(d);
+                      return n;
+                    })
+                  }
+                >
+                  {d}
+                </button>
+              ))}
+            </div>
+          )}
+          {scheduleMode === 'more' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <input className="input" type="date" value={morePick} onChange={(e) => setMorePick(e.target.value)} />
+                <button type="button" className="btn btn-sm btn-primary" disabled={!morePick} onClick={() => {
+                  const mmdd = morePick.slice(5);
+                  if (mmdd && !moreDates.includes(mmdd)) setMoreDates((prev) => [...prev, mmdd].sort());
+                  setMorePick('');
+                }}>
+                  Add date
+                </button>
+              </div>
+              {moreDates.length > 0 && (
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.85rem' }}>
+                  {moreDates.map((d) => (
+                    <li key={d} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {d}
+                      <button type="button" className="btn btn-sm btn-ghost btn-delete" onClick={() => setMoreDates((prev) => prev.filter((x) => x !== d))}>
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
         </div>
         <p className="text-muted" style={{ fontSize: '0.8rem' }}>
           {draftItems.filter((d) => d.title.trim()).length} item(s) will be included.
-          {dayMode === 'weekday' && ` Items will appear every ${selectedWeekday.charAt(0).toUpperCase() + selectedWeekday.slice(1)}.`}
-          {dayMode === 'date' && selectedDate && ` Items will appear every year on ${selectedDate.slice(5).replace('-', '/')}.`}
-          {dayMode === 'none' && ' No automatic schedule — items won\'t be added automatically.'}
+          {scheduleMode === 'none' && ' None: template stays in the list only — nothing is applied automatically.'}
+          {scheduleMode === 'daily' && ' Daily: items are added every calendar day.'}
+          {scheduleMode === 'weekdays' && ' Weekdays: pick at least one day.'}
+          {scheduleMode === 'dates' && ' Dates: e.g. 1 and 15 → every month on those days.'}
+          {scheduleMode === 'more' && ' More: yearly dates (MM-DD), repeat every year.'}
         </p>
         <button className="btn btn-primary btn-full" onClick={handleTemplateConfirm} disabled={!tplName.trim()}>
           Create Template

@@ -154,6 +154,7 @@ export const api = {
     messages: { role: 'user' | 'assistant'; content: string }[];
     clientIsoTime?: string;
     tzOffsetMinutes?: number;
+    followUp?: { mode: string; previousPending?: unknown[] };
   }) =>
     request<{
       message: string;
@@ -165,9 +166,18 @@ export const api = {
       dirtyTemplates?: boolean;
     }>('/ai/chat', { method: 'POST', body: JSON.stringify(body) }),
 
-  aiExecuteActions: (actions: { tool: string; arguments: Record<string, unknown> }[]) =>
+  aiExecuteActions: (
+    actions: { tool: string; arguments: Record<string, unknown> }[],
+    opts?: { contextUserMessage?: string },
+  ) =>
     request<{ results: { ok: boolean; tool: string; error?: string; item?: unknown; deleted?: unknown }[] }>(
       '/ai/execute-actions',
-      { method: 'POST', body: JSON.stringify({ actions }) },
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          actions,
+          contextUserMessage: opts?.contextUserMessage,
+        }),
+      },
     ),
 };

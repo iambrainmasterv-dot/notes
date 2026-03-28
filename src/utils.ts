@@ -1,6 +1,5 @@
-import type { DeadlineState, Note, Task, ScheduleTemplate, Weekday, ParentType, Item } from './types';
-
-const WEEKDAYS: Weekday[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+import type { DeadlineState, Note, Task, ScheduleTemplate, ParentType, Item } from './types';
+import { templateMatchesOccurrence } from './utils/scheduleTemplate';
 
 const TIME_ONLY_RE = /^\d{2}:\d{2}$/;
 
@@ -309,17 +308,14 @@ export function appCalendarDateStr(resetTime: string): string {
 }
 
 export function scheduleTemplateMatchesDate(template: ScheduleTemplate, dateStrYMD: string): boolean {
-  if (template.scheduleKind === 'none') return false;
-  if (template.scheduleKind === 'weekday') {
-    const d = new Date(`${dateStrYMD}T12:00:00`);
-    const weekday = WEEKDAYS[d.getDay()];
-    return weekday === template.scheduleValue?.toLowerCase();
-  }
-  if (template.scheduleKind === 'date') {
-    const mmdd = dateStrYMD.slice(5);
-    return mmdd === template.scheduleValue;
-  }
-  return false;
+  return templateMatchesOccurrence(
+    {
+      scheduleKind: template.scheduleKind,
+      scheduleRules: template.scheduleRules,
+      scheduleValue: template.scheduleValue,
+    },
+    dateStrYMD,
+  );
 }
 
 export function templatesMatchingAppDay(templates: ScheduleTemplate[], resetTime: string): ScheduleTemplate[] {

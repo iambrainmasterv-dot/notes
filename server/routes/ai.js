@@ -110,6 +110,7 @@ router.post('/chat', async (req, res) => {
       tzOffsetMinutes: req.body?.tzOffsetMinutes,
       settingsRow,
       ollamaBase,
+      followUp: req.body?.followUp,
     });
     res.json({
       message,
@@ -156,7 +157,9 @@ router.post('/execute-actions', async (req, res) => {
         return res.status(400).json({ error: 'Each action needs tool and arguments object' });
       }
     }
-    const { results } = await executeConfirmedActions(req.userId, actions);
+    const contextUserMessage =
+      typeof req.body?.contextUserMessage === 'string' ? req.body.contextUserMessage : '';
+    const { results } = await executeConfirmedActions(req.userId, actions, contextUserMessage);
     res.json({ results });
   } catch (e) {
     console.error('POST /api/ai/execute-actions', e);
