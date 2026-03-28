@@ -15,17 +15,27 @@ export const APP_CAPABILITIES_MARKDOWN = `
   2. **Schedule templates** — \`schedule_kind\`: **none** (list only), **daily**, **weekdays** (pick days in \`schedule_rules.weekdays\`), **dates** (month days 1–31 in \`schedule_rules.monthDays\`), **more** (yearly \`MM-DD\` list in \`schedule_rules.yearlyDates\`). UI labels: None, Daily, Weekdays, Dates, More. Multiple templates can match the same day. This is **not** the same as \`daily: true\` on a note.
 - **Mon–Fri only** → one template with \`weekday_preset: "monday_to_friday"\` or \`schedule_rules.weekdays\` listing those five days — **not** a single \`daily: true\` task (that includes weekends).
 
-## Sidebar tabs
-- **Pool**: Active notes + tasks; list / table / **canvas**. **Add Note** / **Add Task** open create flows on Notes/Tasks.
-- **Schedule**: **Daily** section (\`daily: true\` items) + **Templates** (none/daily/weekdays/dates/more). Template items with a **time** are cleaned up after that app-day; **none** templates do not auto-apply.
-- **Notes**: Tree, canvas positions on roots, collapse.
-- **Tasks**: Target/progress, nesting under notes or tasks.
-- **Completed**: Done items; recover or delete.
-- **Jarvis**: Chat; **Side Jarvis** on wide screens stays open across tabs.
+## Recurring language (critical for Jarvis)
+- Phrases like **every Friday**, **each Monday**, **weekdays**, **on the 1st and 15th**, **yearly on 12-25** mean the user wants **scheduling**, not a plain note whose title ends with "every Friday".
+- Use **create_schedule_template** with the correct \`schedule_kind\` and \`schedule_rules\` (or **daily: true** only when they mean **every calendar day** including weekends).
+- If it is **unclear** whether they want one-off vs daily vs template, or which template mode (**None**, **Daily**, **Weekdays**, **Dates**, **More**) / which days, **ask** in chat — do not guess by baking schedule text into the title.
+- When the user says **template**, apply mentioned weekdays or dates to the template; if underspecified, **ask** before creating.
+
+## Sidebar tabs (left rail, top to bottom)
+- **Pool** — Combined **active** notes and tasks; views: list, table, **canvas**. Buttons **Add Note** / **Add Task** jump to create on Notes/Tasks flows.
+- **Schedule** — Two areas: (1) **Daily** items (\`daily: true\`, every calendar day). Buttons **Daily Note** and **Daily Task** open modals **New Daily Note** / **New Daily Task** with **Create Daily Note** / **Create Daily Task**. (2) **Schedule Templates** — header button **New Template** opens the builder; confirm step uses schedule labels **None**, **Daily**, **Weekdays**, **Dates**, **More** and primary button **Create Template**. Template lines with a **time** clean up after that app-day; **None** does not auto-materialize.
+- **Notes** — Tree of notes; drag roots on **canvas**; collapse rows.
+- **Tasks** — Tree of tasks with **target** and **progress**; nest under notes or tasks.
+- **Jarvis** — Full-page chat; optional **Side Jarvis** toggle in the sidebar on wide layouts (label **Side Jarvis**).
+- **Completed** — Finished notes/tasks. Search field placeholder **Search completed...** Rows have **Recover** (↩) to move back to active; you can also select rows and use bulk actions. Table/grid views show the same.
+
+## Settings (gear icon in sidebar)
+- Opens the settings panel. Sections include appearance and **Jarvis**.
+- Under **Jarvis**: description *Allow Jarvis to create, update, or delete notes and tasks…* — the toggle label is **Allow edits**. When off, Jarvis chat works but mutating tools fail until the user turns **Allow edits** on.
 
 ## Notes vs tasks (tools use snake_case)
 - **Note**: \`title\`, \`description\`, \`completed\`, optional \`deadline\`, \`parent_id\` + \`parent_type\` (\`note\` | \`task\`), \`daily\`, \`position_x\` / \`position_y\`, \`collapsed\`.
-- **Task**: same plus \`target\` (default 10 in API if omitted) and \`progress\`.
+- **Task**: same plus \`target\` (Jarvis default **1** if omitted when creating via agent) and \`progress\` (default **0**).
 - **Completing** a parent cascades to descendants. **delete_note** / **delete_task** with default **cascade** removes the subtree.
 
 ## Deadlines
@@ -37,9 +47,16 @@ export const APP_CAPABILITIES_MARKDOWN = `
 - **Mon–Fri**: \`weekday_preset: "monday_to_friday"\` **or** \`weekdays: ["monday",…,"friday"]\` → **one** template with \`schedule_kind: "weekdays"\`.
 - **Aliases** (agent): \`weekday\` → weekdays, \`date\` → more.
 
+## Jarvis-led flows (match product behavior)
+- **Create**: If title missing, ask in chat before tools. **Recurring** wording → template or daily as appropriate; **never** only append "every Friday" to a normal note title. If schedule intent is ambiguous, **ask** (one-off vs daily vs template; which **None** / **Daily** / **Weekdays** / **Dates** / **More** and which days). If user says **template**, map their days/dates into rules or ask what is missing.
+- **Delete**: In chat, summarize what will be deleted (and cascade), wait for explicit **yes**, then **delete_***.
+- **Mark done**: **update_*** with \`completed: true\`.
+- **Recover from Completed**: **list_notes** / **list_tasks** with \`completed: true\`, fuzzy-match, list candidates, user picks one → **update_*** with \`completed: false\` (no extra confirm).
+
 ## Tools workflow (critical)
 - **list_notes** / **list_tasks** before **update_***, **delete_***, or nested **create_*** unless you already have the correct **id** from this chat.
-- **create_note** / **create_task**: require **title**; optional description, deadline, \`parent_id\` / \`parent_type\`, daily, task \`target\` / \`progress\`.
+- **list_notes** / **list_tasks** with \`completed: true\` → items shown on the **Completed** tab.
+- **create_note** / **create_task**: require **title**; optional description, deadline, \`parent_id\` / \`parent_type\`, daily, task \`target\` (default 1) / \`progress\` (default 0).
 - **update_***: require **id**; only send fields that change.
 - **delete_***: require **id**; **cascade** defaults true (set \`cascade: false\` to delete only that node if children should remain — rarely what users want).
 - **get_app_capabilities**: returns this document.

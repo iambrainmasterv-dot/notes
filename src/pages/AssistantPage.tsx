@@ -11,9 +11,9 @@ export function AssistantPage(props: Props) {
       <header className="page-header">
         <h1 className="page-title">Jarvis</h1>
         <p className="page-subtitle" style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-          Jarvis runs on Ollama (no API key). Session-only chat. With <strong>Allow edits</strong> on, clear edit requests
-          can apply at once; otherwise you&apos;ll see <strong>Accept</strong> / <strong>Deny</strong> /{' '}
-          <strong>Redo</strong> on proposed changes. Jarvis can undo recent actions on request.
+          Session-only chat. Turn on <strong>Allow edits</strong> under <strong>Settings</strong> → <strong>Jarvis</strong> so
+          I can change your data. Clear requests may apply right away; vague ones show <strong>Accept</strong>,{' '}
+          <strong>Deny</strong>, and <strong>Redo</strong>. Ask me to undo if something went wrong.
         </p>
       </header>
       <AssistantPanel {...props} compact={false} />

@@ -1,3 +1,5 @@
+import { normalizeWeekdayToken } from '../utils/scheduleTemplate.js';
+
 /**
  * Heuristic: user clearly asked to mutate data (not just brainstorming).
  */
@@ -64,4 +66,58 @@ export function userWantsMondayThroughFridaySchedule(text) {
   if (/\bmonday\s+to\s+friday\b/.test(t)) return true;
   if (/\bmon\s*[-–]\s*fri\b/.test(t)) return true;
   return false;
+}
+
+/**
+ * User wants the same item every calendar day (including Sat/Sun) — valid for daily:true on note/task.
+ */
+export function userExplicitCalendarDailyIntent(text) {
+  if (!text || typeof text !== 'string') return false;
+  const t = text.toLowerCase();
+  if (/\bevery\s+day\b/.test(t)) return true;
+  if (/\beach\s+day\b/.test(t)) return true;
+  if (/\bevery\s+single\s+day\b/.test(t)) return true;
+  if (/\bevery\s+calendar\s+day\b/.test(t)) return true;
+  if (/\b(remind|repeat)\s+me\s+daily\b/.test(t)) return true;
+  if (/\b\d+\s*days?\s+a\s+week\b/.test(t) && /\b7\b/.test(t)) return true;
+  if (/\bdaily\b/.test(t) && /\b(note|task|remind|reminder|item)\b/.test(t)) return true;
+  return false;
+}
+
+const WD_TOKEN =
+  '(?:sun|sunday|mon|monday|tue|tues|tuesday|wed|wednesday|thu|thur|thurs|thursday|fri|friday|sat|saturday)s?';
+
+/**
+ * User asked for recurrence on specific weekdays (not seven-day daily).
+ * Specific weekday phrases win over a generic "daily task" in the same message (e.g. wrong model output).
+ */
+export function userRequestedSpecificWeekdayRecurrence(text) {
+  if (!text || typeof text !== 'string') return false;
+  const t = text.toLowerCase();
+  if (new RegExp(`\\bevery\\s+${WD_TOKEN}\\b`, 'i').test(text)) return true;
+  if (new RegExp(`\\b(each|on)\\s+${WD_TOKEN}\\b`, 'i').test(text)) return true;
+  if (/\bweekdays?\b/.test(t)) return true;
+  if (userWantsMondayThroughFridaySchedule(text)) return true;
+  if (userExplicitCalendarDailyIntent(text)) return false;
+  return false;
+}
+
+/**
+ * True when create_note/create_task with plain or daily flags should become a weekdays template instead.
+ */
+export function weekdayRecurrenceNeedsTemplate(text) {
+  return userRequestedSpecificWeekdayRecurrence(text);
+}
+
+/** Weekday names mentioned in free text (for routing to schedule_rules.weekdays). */
+export function collectWeekdaysMentionedInText(text) {
+  if (!text || typeof text !== 'string') return [];
+  const found = [];
+  const re = new RegExp(`\\b${WD_TOKEN}\\b`, 'gi');
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const n = normalizeWeekdayToken(m[0]);
+    if (n && !found.includes(n)) found.push(n);
+  }
+  return found;
 }

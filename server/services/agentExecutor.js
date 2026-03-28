@@ -1,11 +1,29 @@
 import { randomUUID } from 'crypto';
 import { pool } from '../db.js';
 import { collectDescendantIds } from './agentHierarchy.js';
-import { mergeWorkContext, toolWorkContext, userWantsMondayThroughFridaySchedule } from './intentPolicy.js';
+import {
+  mergeWorkContext,
+  toolWorkContext,
+  userWantsMondayThroughFridaySchedule,
+  weekdayRecurrenceNeedsTemplate,
+  collectWeekdaysMentionedInText,
+} from './intentPolicy.js';
 import { normalizeDeadlineForStorage, parseTimePhraseToHm } from './timeParse.js';
 import { APP_CAPABILITIES_MARKDOWN } from './appCapabilities.js';
 import { pushAgentUndo, formatUndoListForAgent, undoAgentActions } from './agentUndoStack.js';
 import { normalizeScheduleRules, normalizeYearlyDate } from '../utils/scheduleTemplate.js';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** Maps model placeholders and invalid strings to null for uuid DB columns. */
+function normalizeOptionalUuid(v) {
+  if (v == null) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  const lower = s.toLowerCase();
+  if (lower === 'none' || lower === 'null' || lower === 'undefined' || lower === 'n/a') return null;
+  return UUID_RE.test(s) ? s : null;
+}
 
 function summarizeNote(n) {
   return {
@@ -147,16 +165,48 @@ function collectWeekdaysFromArgs(args) {
   return [];
 }
 
+/**
+ * Models often pass a single item object, a JSON string, or `item` instead of `items[]`.
+ * @param {unknown} raw
+ * @returns {unknown[]}
+ */
+function coerceScheduleTemplateItemsArray(raw) {
+  if (raw == null) return [];
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    const t = raw.trim();
+    if (!t) return [];
+    try {
+      return coerceScheduleTemplateItemsArray(JSON.parse(t));
+    } catch {
+      return [];
+    }
+  }
+  if (typeof raw === 'object') {
+    const o = /** @type {Record<string, unknown>} */ (raw);
+    if (o.type != null || o.title != null || o.name != null) return [o];
+  }
+  return [];
+}
+
 function normalizeScheduleTemplateItems(items) {
-  if (!Array.isArray(items)) return [];
+  const arr = coerceScheduleTemplateItemsArray(items);
   const out = [];
-  for (let i = 0; i < items.length; i++) {
-    const it = items[i] || {};
+  for (let i = 0; i < arr.length; i++) {
+    let it = arr[i] || {};
+    if (typeof it === 'string') {
+      try {
+        it = JSON.parse(it);
+      } catch {
+        it = { title: it };
+      }
+    }
+    if (typeof it !== 'object' || it == null) it = {};
     const type = it.type === 'note' ? 'note' : 'task';
     out.push({
       id: randomUUID(),
       type,
-      title: String(it.title || '').trim() || 'Untitled',
+      title: String(it.title || it.name || '').trim() || 'Untitled',
       description: String(it.description ?? ''),
       deadline_time: it.deadline_time != null && String(it.deadline_time).trim() !== '' ? String(it.deadline_time) : null,
       target: type === 'task' ? (Number(it.target) >= 0 ? Number(it.target) : 10) : null,
@@ -312,15 +362,120 @@ function inferTemplateItemsFromUserMessage(text) {
  */
 function enrichScheduleTemplateArgs(args, lastUserMessage) {
   const merged = { ...(args && typeof args === 'object' ? args : {}) };
-  const normalized = normalizeScheduleTemplateItems(merged.items);
+  if (merged.items == null && merged.item != null) {
+    merged.items = Array.isArray(merged.item) ? merged.item : [merged.item];
+  }
+  delete merged.item;
+  let normalized = normalizeScheduleTemplateItems(merged.items);
   if (normalized.length === 0 && lastUserMessage) {
     merged.items = inferTemplateItemsFromUserMessage(lastUserMessage);
+    normalized = normalizeScheduleTemplateItems(merged.items);
   }
-  const again = normalizeScheduleTemplateItems(merged.items);
-  if (!String(merged.name || '').trim() && again[0]?.title) {
-    merged.name = String(again[0].title);
+  if (!String(merged.name || '').trim() && normalized[0]?.title) {
+    merged.name = String(normalized[0].title);
   }
   return merged;
+}
+
+/**
+ * User text requests specific weekdays → always a schedule template, never daily:true on note/task.
+ * @param {(tool: string, a: unknown) => void} setCtx
+ * @returns {Promise<{ kind: 'ok'; templates: object[] } | { kind: 'error'; resultText: string } | null>}
+ */
+async function tryWeekdayTemplateFromUserMessage(userId, args, lastUser, ctx, itemType, setCtx) {
+  if (!weekdayRecurrenceNeedsTemplate(lastUser)) return null;
+  if (userWantsMondayThroughFridaySchedule(lastUser)) return null;
+  if (normalizeOptionalUuid(args?.parent_id)) return null;
+
+  let wd = collectWeekdaysMentionedInText(lastUser);
+  if (wd.length === 0 && /\bweekdays?\b/i.test(lastUser)) {
+    wd = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+  }
+  if (wd.length === 0) {
+    return {
+      kind: 'error',
+      resultText: JSON.stringify({
+        error: 'weekday_recurrence_unclear',
+        hint: 'Could not tell which weekday(s). Ask the user, then use create_schedule_template with schedule_kind weekdays and schedule_rules.weekdays (e.g. ["friday"]). Never use daily=true for "every Friday" — that repeats every calendar day.',
+      }),
+    };
+  }
+
+  const inferred = inferTemplateItemsFromUserMessage(lastUser);
+  const titleFromArg = String(args?.title || '').trim();
+  let title = titleFromArg || inferred[0]?.title || '';
+  if (!title) {
+    const tm = lastUser.match(/\btask\s+for\s+me\s+to\s+(.+?)(?=\s+every\s+|\s+each\s+|$)/i);
+    if (tm) title = tm[1].trim();
+  }
+  if (!title) {
+    const nm = lastUser.match(/\bnote\s+for\s+me\s+to\s+(.+?)(?=\s+every\s+|\s+each\s+|$)/i);
+    if (nm) title = nm[1].trim();
+  }
+  if (!title) title = 'Untitled';
+
+  const description = String(args?.description ?? inferred[0]?.description ?? '');
+  let deadline_time = null;
+  if (args?.deadline != null) {
+    deadline_time = normalizeDeadlineForStorage(String(args.deadline), Boolean(args?.daily));
+  }
+  const item =
+    itemType === 'task'
+      ? {
+          type: 'task',
+          title,
+          description,
+          ...(deadline_time ? { deadline_time } : {}),
+          target:
+            Number(args?.target) >= 0
+              ? Number(args.target)
+              : inferred[0]?.target != null
+                ? Number(inferred[0].target)
+                : 1,
+        }
+      : {
+          type: 'note',
+          title,
+          description,
+          ...(deadline_time ? { deadline_time } : {}),
+        };
+
+  setCtx('create_schedule_template', { weekdays: wd });
+  const tplArgs = enrichScheduleTemplateArgs(
+    {
+      name: title,
+      description,
+      weekdays: wd,
+      items: [item],
+    },
+    lastUser,
+  );
+
+  if (normalizeScheduleTemplateItems(tplArgs.items).length === 0) {
+    return {
+      kind: 'error',
+      resultText: JSON.stringify({
+        error: 'template_items_missing',
+        hint: 'Ask for a clear task/note title, then create_schedule_template with weekdays in schedule_rules.',
+      }),
+    };
+  }
+
+  try {
+    const created = await executeScheduleTemplateCreates(userId, tplArgs);
+    markTemplatesDirty(ctx);
+    const templateIds = created.map((c) => c.id).filter(Boolean);
+    if (templateIds.length) {
+      pushAgentUndo(userId, {
+        type: 'delete_template_ids',
+        label: `Created weekdays template for "${title}"`,
+        templateIds,
+      });
+    }
+    return { kind: 'ok', templates: created };
+  } catch (e) {
+    return { kind: 'error', resultText: `Error: ${e.message || 'failed'}` };
+  }
 }
 
 /**
@@ -393,10 +548,28 @@ export async function runAgentTool(name, args, ctx) {
       }
 
       case 'create_note': {
-        setCtx('create_note', args);
         if (!mutationsEnabled) {
           return { resultText: 'Mutations are disabled in user settings; cannot create.', workContext };
         }
+        const lastUserNote = String(lastUserMessage || '');
+        const routedNote = await tryWeekdayTemplateFromUserMessage(
+          userId,
+          args,
+          lastUserNote,
+          ctx,
+          'note',
+          setCtx,
+        );
+        if (routedNote?.kind === 'error') {
+          return { resultText: routedNote.resultText, workContext: mergeWorkContext(workContext, 'schedule') };
+        }
+        if (routedNote?.kind === 'ok') {
+          return {
+            resultText: JSON.stringify(routedNote.templates),
+            workContext: mergeWorkContext(workContext, 'schedule'),
+          };
+        }
+        setCtx('create_note', args);
         const title = String(args?.title || '').trim() || 'Untitled';
         const description = String(args?.description ?? '');
         const daily = Boolean(args?.daily);
@@ -406,7 +579,7 @@ export async function runAgentTool(name, args, ctx) {
           if (hm) deadline = hm.timeHm;
         }
         deadline = normalizeDeadlineForStorage(deadline, daily);
-        const parent_id = args?.parent_id || null;
+        const parent_id = normalizeOptionalUuid(args?.parent_id);
         const parent_type = args?.parent_type ?? (parent_id ? 'note' : null);
         const id = randomUUID();
         const created_at = new Date().toISOString();
@@ -430,7 +603,7 @@ export async function runAgentTool(name, args, ctx) {
           return { resultText: 'Mutations are disabled in user settings; cannot create.', workContext: null };
         }
         const lastUser = String(lastUserMessage || '');
-        const parent_id_early = args?.parent_id || null;
+        const parent_id_early = normalizeOptionalUuid(args?.parent_id);
         if (userWantsMondayThroughFridaySchedule(lastUser) && !parent_id_early) {
           setCtx('create_schedule_template', { weekday_preset: 'monday_to_friday' });
           const inferred = inferTemplateItemsFromUserMessage(lastUser);
@@ -488,6 +661,17 @@ export async function runAgentTool(name, args, ctx) {
           }
         }
 
+        const routedWd = await tryWeekdayTemplateFromUserMessage(userId, args, lastUser, ctx, 'task', setCtx);
+        if (routedWd?.kind === 'error') {
+          return { resultText: routedWd.resultText, workContext: mergeWorkContext(workContext, 'schedule') };
+        }
+        if (routedWd?.kind === 'ok') {
+          return {
+            resultText: JSON.stringify(routedWd.templates),
+            workContext: mergeWorkContext(workContext, 'schedule'),
+          };
+        }
+
         setCtx('create_task', args);
         const title = String(args?.title || '').trim() || 'Untitled';
         const description = String(args?.description ?? '');
@@ -498,9 +682,9 @@ export async function runAgentTool(name, args, ctx) {
           if (hm) deadline = hm.timeHm;
         }
         deadline = normalizeDeadlineForStorage(deadline, daily);
-        const target = Number(args?.target) >= 0 ? Number(args.target) : 10;
+        const target = Number(args?.target) >= 0 ? Number(args.target) : 1;
         const progress = Number(args?.progress) >= 0 ? Number(args.progress) : 0;
-        const parent_id = args?.parent_id || null;
+        const parent_id = normalizeOptionalUuid(args?.parent_id);
         const parent_type = args?.parent_type ?? (parent_id ? 'note' : null);
         const id = randomUUID();
         const created_at = new Date().toISOString();
@@ -548,6 +732,7 @@ export async function runAgentTool(name, args, ctx) {
           const d = Boolean(patch.daily ?? row.daily);
           patch.deadline = normalizeDeadlineForStorage(String(patch.deadline), d);
         }
+        if (patch.parent_id !== undefined) patch.parent_id = normalizeOptionalUuid(patch.parent_id);
         if (Object.keys(patch).length === 0) return { resultText: 'No valid fields to update', workContext };
         const before = structuredClone(row);
         const sets = [];
@@ -599,6 +784,7 @@ export async function runAgentTool(name, args, ctx) {
           const d = Boolean(patch.daily ?? row.daily);
           patch.deadline = normalizeDeadlineForStorage(String(patch.deadline), d);
         }
+        if (patch.parent_id !== undefined) patch.parent_id = normalizeOptionalUuid(patch.parent_id);
         if (Object.keys(patch).length === 0) return { resultText: 'No valid fields to update', workContext };
         const before = structuredClone(row);
         const sets = [];
@@ -949,11 +1135,28 @@ export async function executeConfirmedActions(userId, actions, contextUserMessag
     const args = a.arguments || {};
     try {
       if (tool === 'create_note') {
+        const ctxStub = { dirty: { notes: false, tasks: false, templates: false } };
+        const routedN = await tryWeekdayTemplateFromUserMessage(
+          userId,
+          args,
+          contextUserMessage,
+          ctxStub,
+          'note',
+          () => {},
+        );
+        if (routedN?.kind === 'ok') {
+          results.push({ ok: true, tool: 'create_schedule_template', templates: routedN.templates });
+          continue;
+        }
+        if (routedN?.kind === 'error') {
+          results.push({ ok: false, tool, error: routedN.resultText });
+          continue;
+        }
         const title = String(args.title || '').trim() || 'Untitled';
         const description = String(args.description ?? '');
         const daily = Boolean(args.daily);
         const deadline = normalizeDeadlineForStorage(args.deadline != null ? String(args.deadline) : null, daily);
-        const parent_id = args.parent_id || null;
+        const parent_id = normalizeOptionalUuid(args.parent_id);
         const parent_type = args.parent_type ?? (parent_id ? 'note' : null);
         const id = randomUUID();
         const created_at = new Date().toISOString();
@@ -966,13 +1169,30 @@ export async function executeConfirmedActions(userId, actions, contextUserMessag
         continue;
       }
       if (tool === 'create_task') {
+        const ctxStub = { dirty: { notes: false, tasks: false, templates: false } };
+        const routedT = await tryWeekdayTemplateFromUserMessage(
+          userId,
+          args,
+          contextUserMessage,
+          ctxStub,
+          'task',
+          () => {},
+        );
+        if (routedT?.kind === 'ok') {
+          results.push({ ok: true, tool: 'create_schedule_template', templates: routedT.templates });
+          continue;
+        }
+        if (routedT?.kind === 'error') {
+          results.push({ ok: false, tool, error: routedT.resultText });
+          continue;
+        }
         const title = String(args.title || '').trim() || 'Untitled';
         const description = String(args.description ?? '');
         const daily = Boolean(args.daily);
         const deadline = normalizeDeadlineForStorage(args.deadline != null ? String(args.deadline) : null, daily);
-        const target = Number(args.target) >= 0 ? Number(args.target) : 10;
+        const target = Number(args.target) >= 0 ? Number(args.target) : 1;
         const progress = Number(args.progress) >= 0 ? Number(args.progress) : 0;
-        const parent_id = args.parent_id || null;
+        const parent_id = normalizeOptionalUuid(args.parent_id);
         const parent_type = args.parent_type ?? (parent_id ? 'note' : null);
         const id = randomUUID();
         const created_at = new Date().toISOString();
@@ -1012,6 +1232,7 @@ export async function executeConfirmedActions(userId, actions, contextUserMessag
           const d = Boolean(patch.daily ?? row.daily);
           patch.deadline = normalizeDeadlineForStorage(String(patch.deadline), d);
         }
+        if (patch.parent_id !== undefined) patch.parent_id = normalizeOptionalUuid(patch.parent_id);
         if (Object.keys(patch).length === 0) {
           results.push({ ok: false, tool, error: 'empty_patch' });
           continue;
@@ -1057,6 +1278,7 @@ export async function executeConfirmedActions(userId, actions, contextUserMessag
           const d = Boolean(patch.daily ?? row.daily);
           patch.deadline = normalizeDeadlineForStorage(String(patch.deadline), d);
         }
+        if (patch.parent_id !== undefined) patch.parent_id = normalizeOptionalUuid(patch.parent_id);
         if (Object.keys(patch).length === 0) {
           results.push({ ok: false, tool, error: 'empty_patch' });
           continue;
@@ -1250,12 +1472,13 @@ export const AGENT_TOOL_DEFINITIONS = [
     type: 'function',
     function: {
       name: 'list_notes',
-      description: 'List the user notes (optionally filter by daily flag or completed).',
+      description:
+        'List the user notes. Use completed:true to list items on the Completed tab; completed:false for active only.',
       parameters: {
         type: 'object',
         properties: {
           daily: { type: 'boolean', description: 'If set, filter to daily (true) or non-daily (false).' },
-          completed: { type: 'boolean', description: 'If set, filter completed state.' },
+          completed: { type: 'boolean', description: 'true = Completed tab; false = not completed.' },
         },
       },
     },
@@ -1264,7 +1487,8 @@ export const AGENT_TOOL_DEFINITIONS = [
     type: 'function',
     function: {
       name: 'list_tasks',
-      description: 'List the user tasks (optionally filter by daily or completed).',
+      description:
+        'List the user tasks. Use completed:true for Completed tab items; completed:false for active only.',
       parameters: {
         type: 'object',
         properties: {
@@ -1279,7 +1503,7 @@ export const AGENT_TOOL_DEFINITIONS = [
     function: {
       name: 'create_note',
       description:
-        'Create a note in the Notes/Pool trees. Set daily=true ONLY for a standing item that repeats every calendar day on the Schedule tab (same note every day). Do NOT use daily=true for "weekdays only" or Mon–Fri — use create_schedule_template for recurring weekdays.',
+        'Create a one-off or daily-calendar note. Set daily=true ONLY for every calendar day (including weekends). Do NOT put "every Friday", "weekly on Monday", etc. in title/description instead of scheduling — use create_schedule_template or ask the user to clarify. Do NOT use daily=true for weekdays-only; use templates.',
       parameters: {
         type: 'object',
         properties: {
@@ -1288,7 +1512,10 @@ export const AGENT_TOOL_DEFINITIONS = [
           daily: { type: 'boolean' },
           deadline: { type: 'string', description: 'ISO datetime or HH:mm for daily' },
           time_hint: { type: 'string', description: 'Natural language time e.g. "5pm" for daily items' },
-          parent_id: { type: 'string' },
+          parent_id: {
+            type: 'string',
+            description: 'Parent note/task UUID if nested; omit or null for top-level. Never use the literal string "none".',
+          },
           parent_type: { type: 'string', enum: ['note', 'task'] },
         },
         required: ['title'],
@@ -1300,7 +1527,7 @@ export const AGENT_TOOL_DEFINITIONS = [
     function: {
       name: 'create_task',
       description:
-        'Create a task (Tasks tab / nested). Set daily=true ONLY for a standing task every calendar day on Schedule. For Mon–Fri or specific weekdays without weekend, use create_schedule_template with weekdays array — not daily=true.',
+        'Create a one-off or daily-calendar task. Default target=1 and progress=0 if omitted. Do NOT encode "every Friday" / weekdays / monthly patterns only in title or description — use create_schedule_template or ask which schedule they want. daily=true ONLY for every calendar day; weekdays-only → template with weekdays.',
       parameters: {
         type: 'object',
         properties: {
@@ -1309,9 +1536,12 @@ export const AGENT_TOOL_DEFINITIONS = [
           daily: { type: 'boolean' },
           deadline: { type: 'string' },
           time_hint: { type: 'string' },
-          target: { type: 'number' },
-          progress: { type: 'number' },
-          parent_id: { type: 'string' },
+          target: { type: 'number', description: 'Default 1 if omitted.' },
+          progress: { type: 'number', description: 'Default 0 if omitted.' },
+          parent_id: {
+            type: 'string',
+            description: 'Parent note/task UUID if nested; omit or null for top-level. Never use the literal string "none".',
+          },
           parent_type: { type: 'string', enum: ['note', 'task'] },
         },
         required: ['title'],
@@ -1332,7 +1562,11 @@ export const AGENT_TOOL_DEFINITIONS = [
           completed: { type: 'boolean' },
           deadline: { type: 'string' },
           daily: { type: 'boolean' },
-          parent_id: { type: 'string', nullable: true },
+          parent_id: {
+            type: 'string',
+            nullable: true,
+            description: 'UUID or null to detach; never the string "none".',
+          },
           parent_type: { type: 'string', enum: ['note', 'task'] },
         },
         required: ['id'],
@@ -1355,7 +1589,11 @@ export const AGENT_TOOL_DEFINITIONS = [
           daily: { type: 'boolean' },
           target: { type: 'number' },
           progress: { type: 'number' },
-          parent_id: { type: 'string', nullable: true },
+          parent_id: {
+            type: 'string',
+            nullable: true,
+            description: 'UUID or null to detach; never the string "none".',
+          },
           parent_type: { type: 'string', enum: ['note', 'task'] },
         },
         required: ['id'],
@@ -1376,7 +1614,7 @@ export const AGENT_TOOL_DEFINITIONS = [
     function: {
       name: 'create_schedule_template',
       description:
-        'Create ONE schedule template. Use schedule_kind: none | daily | weekdays | dates | more. For weekdays[] or weekday_preset monday_to_friday, one template stores all selected weekdays in schedule_rules.weekdays. For dates use month_days: [1,15] → schedule_rules.monthDays. For more use schedule_rules.yearlyDates: ["12-25"] or schedule_value single MM-DD. Items: type note|task, title, optional deadline_time (HH:mm), target for tasks.',
+        'Create ONE schedule template for recurring items (specific weekdays, month days, yearly dates, template-daily, or none/list-only). Item titles should describe the action only — not "every Friday" as a substitute for rules. Map user-mentioned days/dates into weekdays[], month_days, or schedule_rules.yearlyDates. If the user said "template" but schedule type or which days/dates is unclear, ask in chat before calling. schedule_kind: none | daily | weekdays | dates | more; weekdays[] or weekday_preset monday_to_friday → schedule_rules.weekdays; month_days → monthDays; yearlyDates MM-DD in schedule_rules.',
       parameters: {
         type: 'object',
         properties: {
