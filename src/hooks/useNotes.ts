@@ -47,11 +47,16 @@ function fromApi(row: Record<string, unknown>): Note {
 }
 
 export function useNotes() {
-  const { user } = useAuth();
+  const { user, isGuest } = useAuth();
   const [notes, setNotes] = useState<Note[]>([]);
   const loaded = useRef(false);
 
   const refetch = useCallback(() => {
+    if (isGuest) {
+      setNotes(storage.getNotes(true));
+      loaded.current = true;
+      return;
+    }
     if (!user) return;
     api
       .getNotes()
@@ -60,10 +65,10 @@ export function useNotes() {
         loaded.current = true;
       })
       .catch(() => {
-        setNotes(storage.getNotes());
+        setNotes(storage.getNotes(false));
         loaded.current = true;
       });
-  }, [user]);
+  }, [user, isGuest]);
 
   useEffect(() => {
     refetch();
@@ -71,8 +76,8 @@ export function useNotes() {
 
   useEffect(() => {
     if (!loaded.current) return;
-    storage.saveNotes(notes);
-  }, [notes]);
+    storage.saveNotes(notes, isGuest);
+  }, [notes, isGuest]);
 
   const addNote = useCallback(
     (data: Omit<Note, 'id' | 'type' | 'completed' | 'createdAt'>) => {

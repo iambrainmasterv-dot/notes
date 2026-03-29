@@ -21,19 +21,24 @@ function fromApiPreset(row: Record<string, unknown>): Preset {
 }
 
 export function usePresets() {
-  const { user } = useAuth();
+  const { user, isGuest } = useAuth();
   const [presets, setPresets] = useState<Preset[]>([]);
 
   useEffect(() => {
+    if (isGuest) {
+      setPresets(storage.getPresets(true));
+      return;
+    }
     if (!user) return;
     api.getPresets()
       .then((rows) => setPresets(rows.map(fromApiPreset)))
-      .catch(() => setPresets(storage.getPresets()));
-  }, [user]);
+      .catch(() => setPresets(storage.getPresets(false)));
+  }, [user, isGuest]);
 
   useEffect(() => {
-    storage.savePresets(presets);
-  }, [presets]);
+    if (!user && !isGuest) return;
+    storage.savePresets(presets, isGuest);
+  }, [presets, isGuest, user]);
 
   const addPreset = useCallback(
     (name: string, items: PresetItem[]) => {

@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthProvider';
 import type { ThemeSettings } from '../types';
 
 const THEME_KEY = 'notesapp_theme';
+const LAST_RESET_TAG_LS = 'notesapp_last_reset_tag';
 
 function loadLocalSettings(): ThemeSettings {
   try {
@@ -31,12 +32,28 @@ function loadLocalSettings(): ThemeSettings {
 }
 
 export function useUserSettings() {
-  const { user } = useAuth();
+  const { user, isGuest } = useAuth();
   const [settings, setSettings] = useState<ThemeSettings>(loadLocalSettings);
-  const [lastResetTag, setLastResetTag] = useState<string | null>(null);
+  const [lastResetTag, setLastResetTag] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(LAST_RESET_TAG_LS);
+    } catch {
+      return null;
+    }
+  });
   const loaded = useRef(false);
 
   useEffect(() => {
+    if (isGuest) {
+      try {
+        const t = localStorage.getItem(LAST_RESET_TAG_LS);
+        setLastResetTag(t);
+      } catch {
+        /* ignore */
+      }
+      loaded.current = true;
+      return;
+    }
     if (!user) return;
     api.getSettings()
       .then((data) => {
@@ -49,12 +66,22 @@ export function useUserSettings() {
           aiAgentMutationsEnabled: data.ai_agent_mutations_enabled !== false,
         };
         setSettings(remote);
-        setLastResetTag((data.last_reset_tag as string) ?? null);
+        const tag = (data.last_reset_tag as string) ?? null;
+        setLastResetTag(tag);
+        if (tag) {
+          try {
+            localStorage.setItem(LAST_RESET_TAG_LS, tag);
+          } catch {
+            /* ignore */
+          }
+        }
         localStorage.setItem(THEME_KEY, JSON.stringify(remote));
         loaded.current = true;
       })
-      .catch(() => { loaded.current = true; });
-  }, [user]);
+      .catch(() => {
+        loaded.current = true;
+      });
+  }, [user, isGuest]);
 
   const update = useCallback(
     (patch: Partial<ThemeSettings>) => {
@@ -79,13 +106,15 @@ export function useUserSettings() {
     [],
   );
 
-  const saveResetTag = useCallback(
-    (tag: string) => {
-      setLastResetTag(tag);
-      api.updateSettings({ last_reset_tag: tag }).catch(() => {});
-    },
-    [],
-  );
+  const saveResetTag = useCallback((tag: string) => {
+    setLastResetTag(tag);
+    try {
+      localStorage.setItem(LAST_RESET_TAG_LS, tag);
+    } catch {
+      /* ignore */
+    }
+    api.updateSettings({ last_reset_tag: tag }).catch(() => {});
+  }, []);
 
   return { settings, update, lastResetTag, saveResetTag };
 }

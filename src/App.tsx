@@ -71,7 +71,7 @@ const tabs: { key: Page; label: string; icon: React.ReactNode }[] = [
 ];
 
 export default function App() {
-  const { user, loading, signOut } = useAuth();
+  const { user, isGuest, loading, signOut } = useAuth();
 
   if (loading) {
     return (
@@ -85,13 +85,13 @@ export default function App() {
     );
   }
 
-  if (!user) return <LoginPage />;
+  if (!user && !isGuest) return <LoginPage />;
 
   return <AuthenticatedApp signOut={signOut} />;
 }
 
 function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
-  const { user } = useAuth();
+  const { user, isGuest } = useAuth();
   const [page, setPage] = useState<Page>('pool');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -109,11 +109,18 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
     deleteTemplate: deleteScheduleTemplate,
     refetch: refetchScheduleTemplates,
   } = useScheduleTemplates();
-  useScheduleTemplateSync({ dailyResetTime: settings.dailyResetTime, lastResetTag, templates: scheduleTemplates, setNotes, setTasks });
+  useScheduleTemplateSync({
+    dailyResetTime: settings.dailyResetTime,
+    lastResetTag,
+    templates: scheduleTemplates,
+    setNotes,
+    setTasks,
+    enabled: !isGuest,
+  });
 
   const { hasLocalData, importLocalData } = useLocalImport();
   const [localImportAvailable, setLocalImportAvailable] = useState(false);
-  const userId = user?.id ?? '';
+  const userId = user?.id ?? (isGuest ? 'guest' : '');
 
   const refreshLocalFlag = useCallback(() => {
     setLocalImportAvailable(hasLocalData());
@@ -262,6 +269,13 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
     refetchScheduleTemplates();
   }, [refetchNotes, refetchTasks, refetchScheduleTemplates]);
 
+  useEffect(() => {
+    if (isGuest) return;
+    const onOnline = () => refetchWorkspace();
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, [isGuest, refetchWorkspace]);
+
   const handleAssistantWorkContext = useCallback((ctx: AssistantWorkContext | null) => {
     if (!ctx) return;
     setPage(ctx);
@@ -284,11 +298,12 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
     onDenyProposal: assistantChat.denyProposal,
     onRedoProposal: assistantChat.redoProposal,
     onDismissError: () => assistantChat.setError(null),
-    ollamaAvailable: assistantAvailable,
+    ollamaAvailable: isGuest ? false : assistantAvailable,
     ollamaCheckPending,
     ollamaSuggestedModel,
     ollamaCloudLoopbackHint,
     onRecheckOllama: checkAssistantAvailability,
+    guestMode: isGuest,
   };
 
   const showAssistantDock = wideViewport && assistantDockOpen && page !== 'assistant';
@@ -557,8 +572,10 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
           )}
 
           <div className="sidebar-user">
-            <span className="user-email" title={user?.email ?? ''}>{user?.email ?? ''}</span>
-            <button className="btn btn-sm btn-ghost" onClick={signOut}>Sign Out</button>
+            <span className="user-email" title={isGuest ? 'Guest (local only)' : (user?.email ?? '')}>
+              {isGuest ? 'Guest — local only' : (user?.email ?? '')}
+            </span>
+            <button className="btn btn-sm btn-ghost" onClick={signOut}>{isGuest ? 'Exit guest' : 'Sign Out'}</button>
           </div>
 
           <div className="sidebar-version" aria-hidden>

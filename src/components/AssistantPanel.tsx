@@ -18,6 +18,8 @@ export interface AssistantPanelProps {
   onRecheckOllama: () => void | Promise<void>;
   /** Narrow dock layout */
   compact?: boolean;
+  /** Local guest session — hide Ollama setup and explain Jarvis is unavailable */
+  guestMode?: boolean;
 }
 
 export function AssistantPanel({
@@ -36,13 +38,14 @@ export function AssistantPanel({
   ollamaCloudLoopbackHint,
   onRecheckOllama,
   compact,
+  guestMode = false,
 }: AssistantPanelProps) {
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const ollamaReady = ollamaAvailable === true;
-  const showSetupGuide = ollamaAvailable === false;
-  const showInitialCheck = ollamaAvailable === null;
+  const ollamaReady = !guestMode && ollamaAvailable === true;
+  const showSetupGuide = !guestMode && ollamaAvailable === false;
+  const showInitialCheck = !guestMode && ollamaAvailable === null;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -60,6 +63,12 @@ export function AssistantPanel({
 
   return (
     <div className={`assistant-panel ${compact ? 'assistant-panel--compact' : ''}`}>
+      {guestMode && (
+        <p className="assistant-banner" role="status">
+          Guest mode: Jarvis uses your NoteTasks server. Sign in to chat; your notes and tasks still work offline on this device.
+        </p>
+      )}
+
       {!mutationsEnabled && ollamaReady && (
         <p className="assistant-banner">
           Jarvis cannot change your notes or tasks while <strong>Allow edits</strong> is off in Settings (Jarvis section).

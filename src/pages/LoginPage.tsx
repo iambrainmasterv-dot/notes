@@ -37,7 +37,7 @@ function clearStoredResetToken() {
 type LoginMode = 'signin' | 'signup' | 'forgot' | 'reset';
 
 export function LoginPage() {
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, continueAsGuest } = useAuth();
   const [mode, setMode] = useState<LoginMode>(() => (getInitialResetToken() ? 'reset' : 'signin'));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -292,20 +292,37 @@ export function LoginPage() {
         </form>
 
         {mode === 'signin' && (
-          <p className="login-toggle" style={{ marginTop: 12 }}>
-            <button
-              type="button"
-              className="btn-link"
-              onClick={() => {
-                setMode('forgot');
-                setError(null);
-                setSuccess(null);
-                setForgotExtras(null);
-              }}
-            >
-              Forgot password?
-            </button>
-          </p>
+          <>
+            <p className="login-toggle" style={{ marginTop: 12 }}>
+              <button
+                type="button"
+                className="btn-link"
+                onClick={() => {
+                  setMode('forgot');
+                  setError(null);
+                  setSuccess(null);
+                  setForgotExtras(null);
+                }}
+              >
+                Forgot password?
+              </button>
+            </p>
+            <p className="login-toggle" style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                className="btn-link"
+                onClick={() => {
+                  setError(null);
+                  continueAsGuest();
+                }}
+              >
+                Continue as guest
+              </button>
+              <span className="text-muted" style={{ display: 'block', marginTop: 6, fontSize: '0.85rem' }}>
+                Notes and tasks stay on this device only. Works offline. Sign in later to sync to your account.
+              </span>
+            </p>
+          </>
         )}
 
         {mode !== 'forgot' && mode !== 'reset' && (

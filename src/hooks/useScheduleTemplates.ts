@@ -1,8 +1,9 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { v4 as uuid } from 'uuid';
 import type { ScheduleTemplate, ScheduleTemplateItem, ScheduleKind, ScheduleRules, Weekday } from '../types';
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthProvider';
+import { storage } from '../storage';
 import { normalizeWeekdayToken, normalizeYearlyDate } from '../utils/scheduleTemplate';
 
 interface RawItem {
@@ -77,61 +78,65 @@ export interface NewScheduleTemplateData {
   items: Omit<ScheduleTemplateItem, 'id' | 'sortOrder'>[];
 }
 
+function guestTemplateFromData(data: NewScheduleTemplateData, id: string): ScheduleTemplate {
+  const now = new Date().toISOString();
+  const items: ScheduleTemplateItem[] = data.items.map((it, i) => ({
+    id: uuid(),
+    type: it.type,
+    title: it.title,
+    description: it.description,
+    deadlineTime: it.deadlineTime,
+    target: it.target,
+    sortOrder: i,
+  }));
+  return {
+    id,
+    name: data.name,
+    description: data.description,
+    scheduleKind: data.scheduleKind,
+    scheduleValue: data.scheduleValue,
+    scheduleRules: data.scheduleRules,
+    createdAt: now,
+    items,
+  };
+}
+
 export function useScheduleTemplates() {
-  const { user } = useAuth();
+  const { user, isGuest } = useAuth();
   const [templates, setTemplates] = useState<ScheduleTemplate[]>([]);
-  const loaded = useRef(false);
 
   useEffect(() => {
-    if (!user || loaded.current) return;
-    loaded.current = true;
+    if (isGuest) {
+      setTemplates(storage.getGuestScheduleTemplates());
+      return;
+    }
+    if (!user) return;
+    let cancelled = false;
     api
       .getScheduleTemplates()
       .then((rows) => {
-        setTemplates((rows as unknown as RawTemplate[]).map(fromApi));
+        if (!cancelled) setTemplates((rows as unknown as RawTemplate[]).map(fromApi));
       })
       .catch(() => {});
-  }, [user]);
+    return () => {
+      cancelled = true;
+    };
+  }, [user, isGuest]);
 
-  const addTemplate = useCallback(async (data: NewScheduleTemplateData) => {
-    const id = uuid();
-    const items = data.items.map((it, i) => ({
-      id: uuid(),
-      type: it.type,
-      title: it.title,
-      description: it.description,
-      deadline_time: it.deadlineTime ?? null,
-      target: it.target ?? null,
-      sort_order: i,
-    }));
-    const raw = (await api.createScheduleTemplate({
-      id,
-      name: data.name,
-      description: data.description,
-      schedule_kind: data.scheduleKind,
-      schedule_value: data.scheduleValue,
-      schedule_rules: data.scheduleRules,
-      items,
-    })) as unknown as RawTemplate;
-    const tpl = fromApi(raw);
-    setTemplates((prev) => [...prev, tpl]);
-    return tpl;
-  }, []);
-
-  const deleteTemplate = useCallback(async (id: string) => {
-    setTemplates((prev) => prev.filter((t) => t.id !== id));
-    await api.deleteScheduleTemplate(id).catch(() => {});
-  }, []);
-
-  const updateTemplate = useCallback(async (id: string, patch: Partial<NewScheduleTemplateData>) => {
-    const apiPatch: Record<string, unknown> = {};
-    if (patch.name !== undefined) apiPatch.name = patch.name;
-    if (patch.description !== undefined) apiPatch.description = patch.description;
-    if (patch.scheduleKind !== undefined) apiPatch.schedule_kind = patch.scheduleKind;
-    if (patch.scheduleValue !== undefined) apiPatch.schedule_value = patch.scheduleValue;
-    if (patch.scheduleRules !== undefined) apiPatch.schedule_rules = patch.scheduleRules;
-    if (patch.items !== undefined) {
-      apiPatch.items = patch.items.map((it, i) => ({
+  const addTemplate = useCallback(
+    async (data: NewScheduleTemplateData) => {
+      if (isGuest) {
+        const id = uuid();
+        const tpl = guestTemplateFromData(data, id);
+        setTemplates((prev) => {
+          const next = [...prev, tpl];
+          storage.saveGuestScheduleTemplates(next);
+          return next;
+        });
+        return tpl;
+      }
+      const id = uuid();
+      const items = data.items.map((it, i) => ({
         id: uuid(),
         type: it.type,
         title: it.title,
@@ -140,20 +145,107 @@ export function useScheduleTemplates() {
         target: it.target ?? null,
         sort_order: i,
       }));
-    }
-    await api.updateScheduleTemplate(id, apiPatch).catch(() => {});
-    const rows = await api.getScheduleTemplates().catch(() => []);
-    setTemplates((rows as unknown as RawTemplate[]).map(fromApi));
-  }, []);
+      const raw = (await api.createScheduleTemplate({
+        id,
+        name: data.name,
+        description: data.description,
+        schedule_kind: data.scheduleKind,
+        schedule_value: data.scheduleValue,
+        schedule_rules: data.scheduleRules,
+        items,
+      })) as unknown as RawTemplate;
+      const tpl = fromApi(raw);
+      setTemplates((prev) => [...prev, tpl]);
+      return tpl;
+    },
+    [isGuest],
+  );
+
+  const deleteTemplate = useCallback(
+    async (id: string) => {
+      if (isGuest) {
+        setTemplates((prev) => {
+          const next = prev.filter((t) => t.id !== id);
+          storage.saveGuestScheduleTemplates(next);
+          return next;
+        });
+        return;
+      }
+      setTemplates((prev) => prev.filter((t) => t.id !== id));
+      await api.deleteScheduleTemplate(id).catch(() => {});
+    },
+    [isGuest],
+  );
+
+  const updateTemplate = useCallback(
+    async (id: string, patch: Partial<NewScheduleTemplateData>) => {
+      if (isGuest) {
+        setTemplates((prev) => {
+          const next = prev.map((t) => {
+            if (t.id !== id) return t;
+            const items =
+              patch.items !== undefined
+                ? patch.items.map((it, i) => ({
+                    id: uuid(),
+                    type: it.type,
+                    title: it.title,
+                    description: it.description,
+                    deadlineTime: it.deadlineTime,
+                    target: it.target,
+                    sortOrder: i,
+                  }))
+                : t.items;
+            return {
+              ...t,
+              ...(patch.name !== undefined ? { name: patch.name } : {}),
+              ...(patch.description !== undefined ? { description: patch.description } : {}),
+              ...(patch.scheduleKind !== undefined ? { scheduleKind: patch.scheduleKind } : {}),
+              ...(patch.scheduleValue !== undefined ? { scheduleValue: patch.scheduleValue } : {}),
+              ...(patch.scheduleRules !== undefined ? { scheduleRules: patch.scheduleRules } : {}),
+              items,
+            };
+          });
+          storage.saveGuestScheduleTemplates(next);
+          return next;
+        });
+        return;
+      }
+      const apiPatch: Record<string, unknown> = {};
+      if (patch.name !== undefined) apiPatch.name = patch.name;
+      if (patch.description !== undefined) apiPatch.description = patch.description;
+      if (patch.scheduleKind !== undefined) apiPatch.schedule_kind = patch.scheduleKind;
+      if (patch.scheduleValue !== undefined) apiPatch.schedule_value = patch.scheduleValue;
+      if (patch.scheduleRules !== undefined) apiPatch.schedule_rules = patch.scheduleRules;
+      if (patch.items !== undefined) {
+        apiPatch.items = patch.items.map((it, i) => ({
+          id: uuid(),
+          type: it.type,
+          title: it.title,
+          description: it.description,
+          deadline_time: it.deadlineTime ?? null,
+          target: it.target ?? null,
+          sort_order: i,
+        }));
+      }
+      await api.updateScheduleTemplate(id, apiPatch).catch(() => {});
+      const rows = await api.getScheduleTemplates().catch(() => []);
+      setTemplates((rows as unknown as RawTemplate[]).map(fromApi));
+    },
+    [isGuest],
+  );
 
   const refetch = useCallback(() => {
+    if (isGuest) {
+      setTemplates(storage.getGuestScheduleTemplates());
+      return;
+    }
     api
       .getScheduleTemplates()
       .then((rows) => {
         setTemplates((rows as unknown as RawTemplate[]).map(fromApi));
       })
       .catch(() => {});
-  }, []);
+  }, [isGuest]);
 
   return { templates, addTemplate, updateTemplate, deleteTemplate, refetch };
 }

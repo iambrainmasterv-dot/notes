@@ -45,11 +45,16 @@ function fromApi(row: Record<string, unknown>): Task {
 }
 
 export function useTasks() {
-  const { user } = useAuth();
+  const { user, isGuest } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const loaded = useRef(false);
 
   const refetch = useCallback(() => {
+    if (isGuest) {
+      setTasks(storage.getTasks(true));
+      loaded.current = true;
+      return;
+    }
     if (!user) return;
     api
       .getTasks()
@@ -58,10 +63,10 @@ export function useTasks() {
         loaded.current = true;
       })
       .catch(() => {
-        setTasks(storage.getTasks());
+        setTasks(storage.getTasks(false));
         loaded.current = true;
       });
-  }, [user]);
+  }, [user, isGuest]);
 
   useEffect(() => {
     refetch();
@@ -69,8 +74,8 @@ export function useTasks() {
 
   useEffect(() => {
     if (!loaded.current) return;
-    storage.saveTasks(tasks);
-  }, [tasks]);
+    storage.saveTasks(tasks, isGuest);
+  }, [tasks, isGuest]);
 
   const addTask = useCallback(
     (data: Omit<Task, 'id' | 'type' | 'completed' | 'createdAt' | 'progress'>) => {

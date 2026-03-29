@@ -44,9 +44,18 @@ interface Params {
   templates: ScheduleTemplate[];
   setNotes: React.Dispatch<React.SetStateAction<Note[]>>;
   setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
+  /** When false (guest / no API), skip server materialization and refresh */
+  enabled?: boolean;
 }
 
-export function useScheduleTemplateSync({ dailyResetTime, lastResetTag, templates, setNotes, setTasks }: Params) {
+export function useScheduleTemplateSync({
+  dailyResetTime,
+  lastResetTag,
+  templates,
+  setNotes,
+  setTasks,
+  enabled = true,
+}: Params) {
   const resetTimeRef = useRef(dailyResetTime);
   resetTimeRef.current = dailyResetTime;
   const templatesRef = useRef(templates);
@@ -54,6 +63,7 @@ export function useScheduleTemplateSync({ dailyResetTime, lastResetTag, template
   const lastSyncRef = useRef<string | null>(null);
 
   const sync = useCallback(async () => {
+    if (!enabled) return;
     const rt = resetTimeRef.current;
     const today = appDateStr(rt);
     const yesterday = prevAppDateStr(rt);
@@ -86,18 +96,20 @@ export function useScheduleTemplateSync({ dailyResetTime, lastResetTag, template
     } catch {
       /* ignore */
     }
-  }, [setNotes, setTasks]);
+  }, [setNotes, setTasks, enabled]);
 
   useEffect(() => {
+    if (!enabled) return;
     void sync();
-  }, [sync, lastResetTag, templates]);
+  }, [sync, lastResetTag, templates, enabled]);
 
   useEffect(() => {
+    if (!enabled) return;
     const id = setInterval(() => {
       void sync();
     }, 30_000);
     return () => clearInterval(id);
-  }, [sync]);
+  }, [sync, enabled]);
 }
 
 function noteFromApi(raw: Record<string, unknown>): Note {
