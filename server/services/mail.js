@@ -18,6 +18,9 @@ function getTransport() {
         ? { rejectUnauthorized: false }
         : undefined;
 
+    const smtpUser = process.env.SMTP_USER != null ? String(process.env.SMTP_USER).trim() : '';
+    const smtpPass = String(process.env.SMTP_PASS ?? '').trim();
+
     transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST.trim(),
       port,
@@ -26,10 +29,7 @@ function getTransport() {
       connectionTimeout: 20_000,
       greetingTimeout: 15_000,
       tls,
-      auth:
-        process.env.SMTP_USER != null && String(process.env.SMTP_USER).length > 0
-          ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS || '' }
-          : undefined,
+      auth: smtpUser.length > 0 ? { user: smtpUser, pass: smtpPass } : undefined,
     });
   }
   return transporter;
@@ -47,13 +47,14 @@ export async function sendPasswordResetEmail({ to, resetUrl }) {
     process.env.SMTP_FROM?.trim() || process.env.SMTP_USER?.trim() || 'NoteTasks <noreply@localhost>';
 
   try {
-    await t.sendMail({
+    const info = await t.sendMail({
       from,
       to,
       subject: 'Reset your NoteTasks password',
       text: `You requested a password reset. Open this link (valid for one hour):\n\n${resetUrl}\n\nIf you did not request this, you can ignore this email.`,
       html: `<p>You requested a password reset.</p><p><a href="${resetUrl}">Reset your password</a></p><p>This link expires in one hour. If you did not request this, you can ignore this email.</p>`,
     });
+    console.info('[mail] password reset send accepted', info.messageId || '(no messageId)');
     return { sent: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

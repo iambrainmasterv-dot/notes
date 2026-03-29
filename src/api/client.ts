@@ -63,7 +63,8 @@ export const api = {
       ok: boolean;
       message?: string;
       mailConfigured?: boolean;
-      emailSent?: boolean;
+      /** true = SMTP accepted send; false = send failed; null = no user row (privacy — same wording as unknown) */
+      emailSent?: boolean | null;
       /** Non-production (or DEV_PASSWORD_RESET_LINK=true): present when email failed so you can still reset locally */
       devResetUrl?: string;
       mailError?: string;

@@ -99,7 +99,13 @@ router.post('/forgot-password', async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT id, email FROM users WHERE email = $1', [email]);
     if (rows.length === 0) {
-      return res.json({ ok: true, message: FORGOT_OK_MESSAGE, mailConfigured });
+      console.info('[auth] forgot-password: no matching user (same response as success for privacy)');
+      return res.json({
+        ok: true,
+        message: FORGOT_OK_MESSAGE,
+        mailConfigured,
+        emailSent: null,
+      });
     }
 
     const user = rows[0];
@@ -153,7 +159,7 @@ router.post('/forgot-password', async (req, res) => {
       message: FORGOT_OK_MESSAGE,
       mailConfigured: true,
       emailSent,
-      ...(mailError && devLinkOk ? { mailError } : {}),
+      ...(mailError && !emailSent ? { mailError } : {}),
       ...(devLinkOk && !emailSent ? { devResetUrl: resetUrl } : {}),
     });
   } catch (err) {

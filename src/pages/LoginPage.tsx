@@ -96,13 +96,19 @@ export function LoginPage() {
           );
         } else if (res.emailSent === false) {
           setSuccess(
-            `${base}\n\nThe server could not send the message (check SMTP settings and server logs). If you are running locally, a reset link may appear below.`,
+            `${base}\n\nThe server could not deliver the message. Check Railway (or host) logs and SMTP credentials. If you are running locally, a reset link may appear below.`,
           );
           if (res.devResetUrl || res.mailError) {
             setForgotExtras({ devResetUrl: res.devResetUrl, mailError: res.mailError });
           }
+        } else if (res.emailSent === true) {
+          setSuccess(
+            `${base}\n\nIf it does not arrive within a few minutes, check spam or junk. The sender is the address in SMTP_FROM (or your SMTP user).`,
+          );
         } else {
-          setSuccess(base);
+          setSuccess(
+            `${base}\n\nIf nothing arrives, use the exact email you signed up with (typos matter) and check spam. On a new deploy, your account only exists if you registered on this same app/database.`,
+          );
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Request failed');
