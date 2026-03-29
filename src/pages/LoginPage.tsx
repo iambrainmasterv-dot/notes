@@ -92,7 +92,7 @@ export function LoginPage() {
         const base = res.message || 'If an account exists for that email, we sent password reset instructions.';
         if (res.mailConfigured === false) {
           setSuccess(
-            `${base}\n\nOutbound email is not configured on this server (set SMTP_HOST and related variables in the API environment). No reset email can be sent until an administrator configures SMTP.`,
+            `${base}\n\nOutbound email is not configured on this server. Set RESEND_API_KEY (recommended on Railway) or SMTP_* in the API environment — see server/.env.example.`,
           );
         } else if (res.emailSent === false) {
           setSuccess(

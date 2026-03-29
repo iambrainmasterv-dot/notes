@@ -3,7 +3,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { pool } from '../db.js';
 import { signToken, authMiddleware } from '../auth.js';
-import { isSmtpConfigured, sendPasswordResetEmail } from '../services/mail.js';
+import { isOutboundMailConfigured, sendPasswordResetEmail } from '../services/mail.js';
 
 const router = Router();
 
@@ -94,7 +94,7 @@ router.post('/forgot-password', async (req, res) => {
     return res.status(429).json({ error: 'Too many reset requests. Try again in a few minutes.' });
   }
 
-  const mailConfigured = isSmtpConfigured();
+  const mailConfigured = isOutboundMailConfigured();
 
   try {
     const { rows } = await pool.query('SELECT id, email FROM users WHERE email = $1', [email]);
