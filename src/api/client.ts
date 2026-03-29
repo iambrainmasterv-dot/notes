@@ -27,6 +27,21 @@ async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
   return res.json();
 }
 
+/** Public auth routes: never send session JWT (avoids proxies / odd middleware edge cases). */
+async function requestWithoutAuth<T>(path: string, opts: RequestInit = {}): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(opts.headers as Record<string, string> || {}),
+  };
+  const url = `${BASE}${path}`;
+  const res = await fetch(url, { ...opts, headers });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error || `Request failed (${res.status})`);
+  }
+  return res.json();
+}
+
 export const api = {
   // Auth
   signup: (email: string, password: string) =>
@@ -44,7 +59,7 @@ export const api = {
   me: () => request<{ user: { id: string; email: string } }>('/auth/me'),
 
   forgotPassword: (email: string) =>
-    request<{
+    requestWithoutAuth<{
       ok: boolean;
       message?: string;
       mailConfigured?: boolean;
@@ -58,7 +73,7 @@ export const api = {
     }),
 
   resetPassword: (token: string, password: string) =>
-    request<{ ok: boolean }>('/auth/reset-password', {
+    requestWithoutAuth<{ ok: boolean }>('/auth/reset-password', {
       method: 'POST',
       body: JSON.stringify({ token, password }),
     }),

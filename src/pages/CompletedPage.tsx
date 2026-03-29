@@ -16,12 +16,11 @@ interface Props {
   recoverTask: (id: string) => void;
   deleteNote: (id: string) => void;
   deleteTask: (id: string) => void;
-  setNotes: React.Dispatch<React.SetStateAction<Note[]>>;
-  setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
+  bulkDeleteByIds: (ids: string[]) => void;
 }
 
 export function CompletedPage({
-  notes, tasks, recoverNote, recoverTask, deleteNote, deleteTask, setNotes, setTasks,
+  notes, tasks, recoverNote, recoverTask, deleteNote, deleteTask, bulkDeleteByIds,
 }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [search, setSearch] = useState('');
@@ -89,11 +88,12 @@ export function CompletedPage({
   };
   const executeDelete = () => {
     if (confirmAction === 'selected') {
-      setNotes((prev) => prev.filter((n) => !selected.has(n.id)));
-      setTasks((prev) => prev.filter((t) => !selected.has(t.id)));
+      bulkDeleteByIds([...selected]);
     } else {
-      setNotes((prev) => prev.filter((n) => !n.completed));
-      setTasks((prev) => prev.filter((t) => !t.completed));
+      bulkDeleteByIds([
+        ...notes.filter((n) => n.completed).map((n) => n.id),
+        ...tasks.filter((t) => t.completed).map((t) => t.id),
+      ]);
     }
     setSelected(new Set());
     setConfirmAction(null);

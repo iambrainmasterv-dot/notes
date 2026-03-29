@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import { api, getToken, setToken } from '../api/client';
+import { readResetTokenFromUrl, looksLikePasswordResetToken } from './resetTokenFromUrl';
 
 export interface AppUser {
   id: string;
@@ -27,6 +28,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const reset = readResetTokenFromUrl();
+    if (looksLikePasswordResetToken(reset)) {
+      setToken(null);
+    }
     const token = getToken();
     if (!token) {
       setLoading(false);

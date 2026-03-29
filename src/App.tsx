@@ -377,6 +377,37 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
     [notes, tasks, setNotes, setTasks],
   );
 
+  const bulkDeleteByIds = useCallback(
+    (ids: string[]) => {
+      const allNoteDel = new Set<string>();
+      const allTaskDel = new Set<string>();
+      for (const id of ids) {
+        const n = notes.find((x) => x.id === id);
+        const t = tasks.find((x) => x.id === id);
+        if (n) {
+          const { noteIds, taskIds } = collectDescendantIds('note', id, notes, tasks);
+          allNoteDel.add(id);
+          noteIds.forEach((i) => allNoteDel.add(i));
+          taskIds.forEach((i) => allTaskDel.add(i));
+        } else if (t) {
+          const { noteIds, taskIds } = collectDescendantIds('task', id, notes, tasks);
+          noteIds.forEach((i) => allNoteDel.add(i));
+          taskIds.forEach((i) => allTaskDel.add(i));
+          allTaskDel.add(id);
+        }
+      }
+      setNotes((prev) => prev.filter((n) => !allNoteDel.has(n.id)));
+      setTasks((prev) => prev.filter((t) => !allTaskDel.has(t.id)));
+      if (allNoteDel.size === 1) {
+        allNoteDel.forEach((nid) => api.deleteNote(nid).catch(() => {}));
+      } else if (allNoteDel.size > 0) {
+        api.deleteNotes([...allNoteDel]).catch(() => {});
+      }
+      allTaskDel.forEach((tid) => api.deleteTask(tid).catch(() => {}));
+    },
+    [notes, tasks, setNotes, setTasks],
+  );
+
   const completeNoteCascade = useCallback(
     (id: string) => {
       const ts = new Date().toISOString();
@@ -596,8 +627,15 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
             />
           )}
           {page === 'completed' && (
-            <CompletedPage notes={notes} tasks={tasks} recoverNote={recoverNote} recoverTask={recoverTask}
-              deleteNote={deleteNoteCascade} deleteTask={deleteTaskCascade} setNotes={setNotes} setTasks={setTasks} />
+            <CompletedPage
+              notes={notes}
+              tasks={tasks}
+              recoverNote={recoverNote}
+              recoverTask={recoverTask}
+              deleteNote={deleteNoteCascade}
+              deleteTask={deleteTaskCascade}
+              bulkDeleteByIds={bulkDeleteByIds}
+            />
           )}
         </div>
       </main>

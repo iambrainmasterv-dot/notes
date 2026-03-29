@@ -117,7 +117,7 @@ router.post('/forgot-password', async (req, res) => {
     await pool.query('DELETE FROM password_reset_tokens WHERE user_id = $1', [user.id]);
 
     const rawToken = randomBytes(32).toString('hex');
-    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+    const tokenHash = createHash('sha256').update(rawToken, 'utf8').digest('hex');
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
 
     await pool.query(
@@ -162,8 +162,13 @@ router.post('/forgot-password', async (req, res) => {
   }
 });
 
+function normalizeResetToken(raw) {
+  if (typeof raw !== 'string') return '';
+  return raw.replace(/\s+/g, '').toLowerCase();
+}
+
 router.post('/reset-password', async (req, res) => {
-  const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+  const token = normalizeResetToken(typeof req.body?.token === 'string' ? req.body.token : '');
   const { password } = req.body;
   if (!token || password == null) return res.status(400).json({ error: 'Token and password required' });
   if (typeof password !== 'string' || password.length < 6) {
@@ -171,7 +176,7 @@ router.post('/reset-password', async (req, res) => {
   }
 
   try {
-    const tokenHash = createHash('sha256').update(token).digest('hex');
+    const tokenHash = createHash('sha256').update(token, 'utf8').digest('hex');
     const { rows } = await pool.query(
       'SELECT user_id FROM password_reset_tokens WHERE token_hash = $1 AND expires_at > now()',
       [tokenHash],

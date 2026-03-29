@@ -1,22 +1,48 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../auth/AuthProvider';
 import { api } from '../api/client';
+import { readResetTokenFromUrl } from '../auth/resetTokenFromUrl';
 import { APP_VERSION } from '../version';
 
-function readResetTokenFromUrl(): string {
+const RESET_TOKEN_STORAGE_KEY = 'notesapp_pw_reset_token';
+
+/** URL wins; mirror to sessionStorage so refresh / remount still has the token after we clean the URL. */
+function getInitialResetToken(): string {
   if (typeof window === 'undefined') return '';
-  return new URLSearchParams(window.location.search).get('reset')?.trim() || '';
+  const fromUrl = readResetTokenFromUrl();
+  if (fromUrl) {
+    try {
+      sessionStorage.setItem(RESET_TOKEN_STORAGE_KEY, fromUrl);
+    } catch {
+      /* ignore */
+    }
+    return fromUrl;
+  }
+  try {
+    const s = sessionStorage.getItem(RESET_TOKEN_STORAGE_KEY)?.trim() || '';
+    return s.replace(/\s+/g, '').toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function clearStoredResetToken() {
+  try {
+    sessionStorage.removeItem(RESET_TOKEN_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
 }
 
 type LoginMode = 'signin' | 'signup' | 'forgot' | 'reset';
 
 export function LoginPage() {
   const { signIn, signUp } = useAuth();
-  const [mode, setMode] = useState<LoginMode>(() => (readResetTokenFromUrl() ? 'reset' : 'signin'));
+  const [mode, setMode] = useState<LoginMode>(() => (getInitialResetToken() ? 'reset' : 'signin'));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
-  const [resetToken, setResetToken] = useState(readResetTokenFromUrl);
+  const [resetToken, setResetToken] = useState(getInitialResetToken);
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPw, setConfirmNewPw] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -25,19 +51,28 @@ export function LoginPage() {
   const [forgotExtras, setForgotExtras] = useState<{ devResetUrl?: string; mailError?: string } | null>(null);
 
   useEffect(() => {
-    if (!resetToken) return;
-    const path = window.location.pathname + window.location.hash;
-    window.history.replaceState({}, document.title, path);
-  }, [resetToken]);
+    const t = readResetTokenFromUrl();
+    if (!t) return;
+    try {
+      sessionStorage.setItem(RESET_TOKEN_STORAGE_KEY, t);
+    } catch {
+      /* ignore */
+    }
+    setResetToken(t);
+    setMode('reset');
+  }, []);
 
   const goSignIn = () => {
     setMode('signin');
     setError(null);
     setSuccess(null);
     setForgotExtras(null);
+    clearStoredResetToken();
     setResetToken('');
     setNewPassword('');
     setConfirmNewPw('');
+    const path = window.location.pathname + window.location.hash;
+    window.history.replaceState({}, document.title, path);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -93,11 +128,14 @@ export function LoginPage() {
       setLoading(true);
       try {
         await api.resetPassword(resetToken, newPassword);
+        clearStoredResetToken();
         setResetToken('');
         setNewPassword('');
         setConfirmNewPw('');
         setMode('signin');
         setSuccess('Password updated. Sign in with your new password.');
+        const path = window.location.pathname + window.location.hash;
+        window.history.replaceState({}, document.title, path);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Request failed');
       } finally {
