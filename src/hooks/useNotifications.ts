@@ -1,7 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
-import type { Note, Task, AppNotification } from '../types';
-import { parseDeadline } from '../utils';
+import type { AppNotification } from '../types';
+import {
+  scanDeadlinePanelCandidates,
+  staleCompletedPanelCandidate,
+  type StaleCompletedInput,
+} from '../notifications/rules';
 
 export interface ToastItem {
   id: string;
@@ -10,79 +14,37 @@ export interface ToastItem {
   level: AppNotification['level'];
 }
 
-const HOUR = 60 * 60 * 1000;
-const DAY = 24 * HOUR;
-
-export interface StaleCompletedParams {
-  userId: string;
-  completedCount: number;
-  /** ms since epoch when Completed was last empty; null if unknown */
-  lastCompletedEmptyAtMs: number | null;
-}
+export type { StaleCompletedInput };
 
 /**
  * Scans active notes/tasks for upcoming deadlines; adds deduped panel entries and one-shot toasts.
  */
 export function useNotifications(
-  notes: Note[],
-  tasks: Task[],
+  notes: Parameters<typeof scanDeadlinePanelCandidates>[0],
+  tasks: Parameters<typeof scanDeadlinePanelCandidates>[1],
   now: number,
-  staleCompleted?: StaleCompletedParams | null,
+  staleCompleted?: StaleCompletedInput | null,
 ) {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const fired = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    const items: (Note | Task)[] = [
-      ...notes.filter((n) => !n.completed && n.deadline),
-      ...tasks.filter((t) => !t.completed && t.deadline),
-    ];
-
-    for (const item of items) {
-      const deadline = item.deadline!;
-      let t: number;
-      try {
-        t = parseDeadline(deadline);
-      } catch {
-        continue;
-      }
-      const ms = t - now;
-      if (ms <= 0) continue;
-
-      let level: AppNotification['level'];
-      let bucket: string;
-      let title: string;
-      let message: string;
-
-      if (ms <= HOUR) {
-        level = 'danger';
-        bucket = '1h';
-        title = `${item.type === 'task' ? 'Task' : 'Note'} expiring very soon`;
-        message = `"${item.title}" is due within about an hour.`;
-      } else if (ms <= DAY) {
-        level = 'warning';
-        bucket = '24h';
-        title = `${item.type === 'task' ? 'Task' : 'Note'} expiring soon`;
-        message = `"${item.title}" is due within 24 hours.`;
-      } else {
-        continue;
-      }
-
-      const dedupeKey = `${item.type}:${item.id}:${bucket}`;
-      if (fired.current.has(dedupeKey)) continue;
-      fired.current.add(dedupeKey);
+    const candidates = scanDeadlinePanelCandidates(notes, tasks, now);
+    for (const c of candidates) {
+      if (fired.current.has(c.dedupeKey)) continue;
+      fired.current.add(c.dedupeKey);
 
       const n: AppNotification = {
         id: uuid(),
-        level,
-        title,
-        message,
+        level: c.level,
+        title: c.title,
+        message: c.message,
         createdAt: Date.now(),
         read: false,
-        dedupeKey,
-        itemType: item.type,
-        itemId: item.id,
+        dedupeKey: c.dedupeKey,
+        itemType: c.itemType,
+        itemId: c.itemId,
       };
 
       setNotifications((prev) => [n, ...prev].slice(0, 200));
@@ -91,20 +53,17 @@ export function useNotifications(
   }, [notes, tasks, now]);
 
   useEffect(() => {
-    if (!staleCompleted?.userId) return;
-    const { completedCount, lastCompletedEmptyAtMs } = staleCompleted;
-    if (completedCount <= 0 || lastCompletedEmptyAtMs == null) return;
-    if (now - lastCompletedEmptyAtMs < 3 * DAY) return;
-
-    const dedupeKey = 'stale-completed-tab';
+    const c = staleCompletedPanelCandidate(staleCompleted, now);
+    if (!c) return;
+    const dedupeKey = c.dedupeKey;
     if (fired.current.has(dedupeKey)) return;
     fired.current.add(dedupeKey);
 
     const n: AppNotification = {
       id: uuid(),
-      level: 'warning',
-      title: 'Clear your Completed tab',
-      message: `You have ${completedCount} completed item${completedCount === 1 ? '' : 's'} waiting. It has been over 3 days since the list was last empty — review, recover, or delete them to stay organized.`,
+      level: c.level,
+      title: c.title,
+      message: c.message,
       createdAt: Date.now(),
       read: false,
       dedupeKey,

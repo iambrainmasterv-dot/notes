@@ -1,5 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import type { AssistantWorkContext, Page } from './types';
+import { Capacitor } from '@capacitor/core';
+import type { AssistantWorkContext, Page, ThemeSettings } from './types';
+import type { AppUser } from './auth/AuthProvider';
 import { useAuth } from './auth/AuthProvider';
 import { LoginPage } from './pages/LoginPage';
 import { useNotes } from './hooks/useNotes';
@@ -12,6 +14,7 @@ import { useScheduleTemplates } from './hooks/useScheduleTemplates';
 import { useScheduleTemplateSync } from './hooks/useScheduleTemplateSync';
 import { useLocalImport } from './hooks/useLocalImport';
 import { useNotifications } from './hooks/useNotifications';
+import { useAndroidLocalNotifications } from './hooks/useAndroidLocalNotifications';
 import { useTick } from './hooks/useTick';
 import { NotesPage } from './pages/NotesPage';
 import { TasksPage } from './pages/TasksPage';
@@ -42,6 +45,14 @@ import {
   templatesMatchingAppDay,
   tutorialCompletedStorageKey,
 } from './utils';
+import {
+  loadAndroidNotifSettings,
+  mergeAndroidNotifSettings,
+  type AndroidNotifUserSettings,
+} from './notifications/androidSettings';
+import { setAndroidDataSyncCallback } from './notifications/syncBridge';
+import { AndroidPinProvider } from './notifications/AndroidPinContext';
+import { AssistantJarvisReadyContext } from './context/AssistantJarvisReadyContext';
 
 const tabs: { key: Page; label: string; icon: React.ReactNode }[] = [
   {
@@ -69,6 +80,158 @@ const tabs: { key: Page; label: string; icon: React.ReactNode }[] = [
     icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
   },
 ];
+
+const MOBILE_NAV_MQ = '(max-width: 768px)';
+
+type AppNavSectionsProps = {
+  page: Page;
+  setPage: (p: Page) => void;
+  setNotifOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  visibleTabs: typeof tabs;
+  completedCount: number;
+  activeCount: number;
+  dailyCount: number;
+  showAssistantDockToggle: boolean;
+  assistantDockOpen: boolean;
+  setAssistantDockOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  settingsOpen: boolean;
+  setSettingsOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  settings: ThemeSettings;
+  updateTheme: (patch: Partial<ThemeSettings>) => void;
+  localImportAvailable: boolean;
+  handleImportLocal: () => Promise<void>;
+  tutorialRerun: () => void;
+  user: AppUser | null;
+  isGuest: boolean;
+  signOut: () => Promise<void>;
+  onNavigate?: () => void;
+  androidNotif?: AndroidNotifUserSettings;
+  onAndroidNotifChange?: (patch: Partial<AndroidNotifUserSettings>) => void;
+};
+
+function AppNavSections({
+  page,
+  setPage,
+  setNotifOpen,
+  visibleTabs: navTabs,
+  completedCount,
+  activeCount,
+  dailyCount,
+  showAssistantDockToggle,
+  assistantDockOpen,
+  setAssistantDockOpen,
+  settingsOpen,
+  setSettingsOpen,
+  settings,
+  updateTheme,
+  localImportAvailable,
+  handleImportLocal,
+  tutorialRerun,
+  user,
+  isGuest,
+  signOut,
+  onNavigate,
+  androidNotif,
+  onAndroidNotifChange,
+}: AppNavSectionsProps) {
+  const afterPage = () => onNavigate?.();
+  return (
+    <>
+      <ul className="sidebar-nav">
+        {navTabs.map((tab) => (
+          <li key={tab.key}>
+            <button
+              type="button"
+              className={`nav-item ${page === tab.key ? 'active' : ''}`}
+              onClick={() => {
+                setPage(tab.key);
+                setNotifOpen(false);
+                afterPage();
+              }}
+              data-tutorial-target={tab.key === 'assistant' ? 'nav-jarvis' : undefined}
+            >
+              <span className="nav-icon">{tab.icon}</span>
+              <span className="nav-label">{tab.label}</span>
+              {tab.key === 'completed' && completedCount > 0 && (
+                <span className="nav-badge">{completedCount}</span>
+              )}
+              {tab.key === 'pool' && activeCount > 0 && (
+                <span className="nav-badge">{activeCount}</span>
+              )}
+              {tab.key === 'schedule' && dailyCount > 0 && (
+                <span className="nav-badge">{dailyCount}</span>
+              )}
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      {showAssistantDockToggle && (
+        <div className="sidebar-dock-toggle-wrap">
+          <button
+            type="button"
+            className={`nav-item ${assistantDockOpen ? 'active' : ''}`}
+            onClick={() => {
+              setAssistantDockOpen((o) => !o);
+            }}
+          >
+            <span className="nav-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="14" y="3" width="7" height="18" rx="1"/><rect x="3" y="5" width="8" height="14" rx="1"/></svg>
+            </span>
+            <span className="nav-label">Side Jarvis</span>
+          </button>
+        </div>
+      )}
+
+      <div className="sidebar-bottom">
+        <div className="sidebar-bottom-row">
+          <button
+            type="button"
+            className={`nav-item ${settingsOpen ? 'active' : ''}`}
+            onClick={() => setSettingsOpen((p) => !p)}
+            data-tutorial-target="nav-settings"
+          >
+            <span className="nav-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </span>
+            <span className="nav-label">Settings</span>
+          </button>
+        </div>
+        {settingsOpen && (
+          <ThemePanel
+            settings={settings}
+            onUpdate={updateTheme}
+            localImportAvailable={localImportAvailable}
+            onImportLocal={handleImportLocal}
+            onRerunTutorial={tutorialRerun}
+            androidNotif={androidNotif}
+            onAndroidNotifChange={onAndroidNotifChange}
+          />
+        )}
+
+        <div className="sidebar-user">
+          <span className="user-email" title={isGuest ? 'Guest (local only)' : (user?.email ?? '')}>
+            {isGuest ? 'Guest — local only' : (user?.email ?? '')}
+          </span>
+          <button
+            type="button"
+            className="btn btn-sm btn-ghost"
+            onClick={() => {
+              void signOut();
+              onNavigate?.();
+            }}
+          >
+            {isGuest ? 'Exit guest' : 'Sign Out'}
+          </button>
+        </div>
+
+        <div className="sidebar-version" aria-hidden>
+          <span className="app-version-pill">v{APP_VERSION}</span>
+        </div>
+      </div>
+    </>
+  );
+}
 
 export default function App() {
   const { user, isGuest, loading, signOut } = useAuth();
@@ -151,6 +314,13 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
   }, [activeForTick]);
   const now = useTick(nearestDeadline);
 
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return;
+    const goPool = () => setPage('pool');
+    window.addEventListener('notetasksOpenPool', goPool);
+    return () => window.removeEventListener('notetasksOpenPool', goPool);
+  }, []);
+
   const completedCount = useMemo(
     () => notes.filter((n) => n.completed).length + tasks.filter((t) => t.completed).length,
     [notes, tasks],
@@ -193,6 +363,36 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
     markRead,
     markAllRead,
   } = useNotifications(notes, tasks, now, staleCompletedParams);
+
+  const [androidNotif, setAndroidNotif] = useState(() => loadAndroidNotifSettings());
+  const patchAndroidNotif = useCallback((p: Partial<AndroidNotifUserSettings>) => {
+    setAndroidNotif((prev) => mergeAndroidNotifSettings(p, prev));
+  }, []);
+
+  const isAndroidApp = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+
+  const [pinsRevision, setPinsRevision] = useState(0);
+  const bumpPinsRevision = useCallback(() => setPinsRevision((n) => n + 1), []);
+
+  useAndroidLocalNotifications({
+    notes,
+    tasks,
+    now,
+    staleCompleted: staleCompletedParams,
+    userId: userId || null,
+    scheduleTemplates,
+    dailyResetTime: settings.dailyResetTime,
+    androidNotif,
+    pinsRevision,
+  });
+
+  useEffect(() => {
+    setAndroidDataSyncCallback(() => {
+      void refetchNotes();
+      void refetchTasks();
+    });
+    return () => setAndroidDataSyncCallback(null);
+  }, [refetchNotes, refetchTasks]);
 
   const activeCount = useMemo(
     () => notes.filter((n) => !n.completed).length + tasks.filter((t) => !t.completed).length,
@@ -309,6 +509,61 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
   const showAssistantDock = wideViewport && assistantDockOpen && page !== 'assistant';
 
   const tutorial = useTutorial(userId, setPage, setSettingsOpen, notes.length, tasks.length);
+
+  const [narrowNav, setNarrowNav] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(MOBILE_NAV_MQ).matches,
+  );
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  useEffect(() => {
+    const m = window.matchMedia(MOBILE_NAV_MQ);
+    const apply = () => setNarrowNav(m.matches);
+    apply();
+    m.addEventListener('change', apply);
+    return () => m.removeEventListener('change', apply);
+  }, []);
+
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMobileNavOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mobileNavOpen]);
+
+  useEffect(() => {
+    if (!tutorial.active || !narrowNav) return;
+    const targets = tutorial.step.highlightTargets;
+    if (targets?.some((t) => t.startsWith('nav-'))) {
+      setMobileNavOpen(true);
+    }
+  }, [tutorial.active, tutorial.step, narrowNav, tutorial.stepIndex]);
+
+  const navSectionProps: AppNavSectionsProps = {
+    page,
+    setPage,
+    setNotifOpen,
+    visibleTabs,
+    completedCount,
+    activeCount,
+    dailyCount,
+    showAssistantDockToggle: wideViewport,
+    assistantDockOpen,
+    setAssistantDockOpen,
+    settingsOpen,
+    setSettingsOpen,
+    settings,
+    updateTheme,
+    localImportAvailable,
+    handleImportLocal,
+    tutorialRerun: tutorial.rerun,
+    user,
+    isGuest,
+    signOut,
+    androidNotif: isAndroidApp ? androidNotif : undefined,
+    onAndroidNotifChange: isAndroidApp ? patchAndroidNotif : undefined,
+  };
 
   const tutorialMarkedComplete = useMemo(() => {
     if (!userId || typeof localStorage === 'undefined') return false;
@@ -461,7 +716,11 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
     setGreetingOpen(false);
   }, [userId]);
 
+  const assistantJarvisReady = Boolean(!isGuest && assistantAvailable === true);
+
   return (
+    <AssistantJarvisReadyContext.Provider value={assistantJarvisReady}>
+    <AndroidPinProvider enabled={isAndroidApp} onPinsChanged={bumpPinsRevision}>
     <div className="app">
       <GreetingScreen
         open={greetingOpen}
@@ -489,7 +748,79 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
         gateHint={tutorial.gateHint}
       />
 
-      <nav className="sidebar">
+      {narrowNav && (
+        <>
+          <header className="app-mobile-header">
+            <button
+              type="button"
+              className="app-mobile-menu-btn"
+              aria-label="Open menu"
+              aria-expanded={mobileNavOpen}
+              onClick={() => setMobileNavOpen((o) => !o)}
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <line x1="4" y1="6" x2="20" y2="6" />
+                <line x1="4" y1="12" x2="20" y2="12" />
+                <line x1="4" y1="18" x2="20" y2="18" />
+              </svg>
+            </button>
+            <div className="app-mobile-header-brand">
+              <div className="brand-mark">N</div>
+              <span className="brand-text">NoteTasks</span>
+            </div>
+            <div className={`notif-bell-wrap ${notifOpen ? 'open' : ''}`} onClick={(e) => e.stopPropagation()}>
+              <NotificationBell
+                unreadCount={unreadCount}
+                panelOpen={notifOpen}
+                onTogglePanel={() => setNotifOpen((o) => !o)}
+                notifications={notifications}
+                onMarkRead={markRead}
+                onMarkAllRead={markAllRead}
+              />
+            </div>
+          </header>
+
+          {mobileNavOpen && (
+            <>
+              <div
+                className="app-nav-drawer-backdrop"
+                aria-hidden
+                onClick={() => setMobileNavOpen(false)}
+              />
+              <aside
+                className={`app-nav-drawer-panel ${mobileNavOpen ? 'is-open' : ''}`}
+                role="dialog"
+                aria-modal="true"
+                aria-label="Navigation"
+              >
+                <div className="app-nav-drawer-top">
+                  <span className="app-nav-drawer-title">Menu</span>
+                  <button
+                    type="button"
+                    className="app-nav-drawer-close btn btn-sm btn-ghost"
+                    aria-label="Close menu"
+                    onClick={() => setMobileNavOpen(false)}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="app-nav-drawer-scroll">
+                  <AppNavSections
+                    {...navSectionProps}
+                    showAssistantDockToggle={!wideViewport}
+                    onNavigate={() => setMobileNavOpen(false)}
+                  />
+                </div>
+              </aside>
+            </>
+          )}
+        </>
+      )}
+
+      <nav className="sidebar app-sidebar-desktop" aria-hidden={narrowNav}>
         <div className="sidebar-brand">
           <div className="sidebar-brand-text">
             <div className="brand-mark">N</div>
@@ -507,81 +838,7 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
           </div>
         </div>
 
-        <ul className="sidebar-nav">
-          {visibleTabs.map((tab) => (
-            <li key={tab.key}>
-              <button
-                type="button"
-                className={`nav-item ${page === tab.key ? 'active' : ''}`}
-                onClick={() => { setPage(tab.key); setNotifOpen(false); }}
-                data-tutorial-target={tab.key === 'assistant' ? 'nav-jarvis' : undefined}
-              >
-                <span className="nav-icon">{tab.icon}</span>
-                <span className="nav-label">{tab.label}</span>
-                {tab.key === 'completed' && completedCount > 0 && (
-                  <span className="nav-badge">{completedCount}</span>
-                )}
-                {tab.key === 'pool' && activeCount > 0 && (
-                  <span className="nav-badge">{activeCount}</span>
-                )}
-                {tab.key === 'schedule' && dailyCount > 0 && (
-                  <span className="nav-badge">{dailyCount}</span>
-                )}
-              </button>
-            </li>
-          ))}
-        </ul>
-
-        {wideViewport && (
-          <div className="sidebar-dock-toggle-wrap">
-            <button
-              type="button"
-              className={`nav-item ${assistantDockOpen ? 'active' : ''}`}
-              onClick={() => setAssistantDockOpen((o) => !o)}
-            >
-              <span className="nav-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="14" y="3" width="7" height="18" rx="1"/><rect x="3" y="5" width="8" height="14" rx="1"/></svg>
-              </span>
-              <span className="nav-label">Side Jarvis</span>
-            </button>
-          </div>
-        )}
-
-        <div className="sidebar-bottom">
-          <div className="sidebar-bottom-row">
-            <button
-              type="button"
-              className={`nav-item ${settingsOpen ? 'active' : ''}`}
-              onClick={() => setSettingsOpen((p) => !p)}
-              data-tutorial-target="nav-settings"
-            >
-              <span className="nav-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-              </span>
-              <span className="nav-label">Settings</span>
-            </button>
-          </div>
-          {settingsOpen && (
-            <ThemePanel
-              settings={settings}
-              onUpdate={updateTheme}
-              localImportAvailable={localImportAvailable}
-              onImportLocal={handleImportLocal}
-              onRerunTutorial={tutorial.rerun}
-            />
-          )}
-
-          <div className="sidebar-user">
-            <span className="user-email" title={isGuest ? 'Guest (local only)' : (user?.email ?? '')}>
-              {isGuest ? 'Guest — local only' : (user?.email ?? '')}
-            </span>
-            <button className="btn btn-sm btn-ghost" onClick={signOut}>{isGuest ? 'Exit guest' : 'Sign Out'}</button>
-          </div>
-
-          <div className="sidebar-version" aria-hidden>
-            <span className="app-version-pill">v{APP_VERSION}</span>
-          </div>
-        </div>
+        <AppNavSections {...navSectionProps} />
       </nav>
 
       <div className="app-main-row">
@@ -661,5 +918,7 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
       )}
       </div>
     </div>
+    </AndroidPinProvider>
+    </AssistantJarvisReadyContext.Provider>
   );
 }

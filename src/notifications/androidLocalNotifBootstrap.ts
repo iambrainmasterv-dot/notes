@@ -1,0 +1,54 @@
+import { LocalNotifications } from '@capacitor/local-notifications';
+
+/** Bump when action types change so devices re-register after app update. */
+const SETUP_VERSION = 2;
+
+/** Keep action ids/titles in sync with NotetasksPinNotificationsPlugin.java (notetasks-android). */
+export const PIN_ACTION_TYPE_NOTE = 'NOTETASKS_PIN_NOTE';
+export const PIN_ACTION_TYPE_TASK = 'NOTETASKS_PIN_TASK';
+
+let setupAppliedVersion = 0;
+
+export function pinActionTypeId(itemType: 'note' | 'task'): string {
+  return itemType === 'note' ? PIN_ACTION_TYPE_NOTE : PIN_ACTION_TYPE_TASK;
+}
+
+export async function ensureAndroidChannelsAndActions(): Promise<void> {
+  if (setupAppliedVersion >= SETUP_VERSION) return;
+
+  await LocalNotifications.createChannel({
+    id: 'notetasks_deadlines',
+    name: 'Deadlines & reminders',
+    description: 'Deadline warnings and Completed tab reminders',
+    importance: 4,
+  });
+  await LocalNotifications.createChannel({
+    id: 'notetasks_digest',
+    name: 'Daily digest',
+    description: 'Summary of your day in NoteTasks',
+    importance: 3,
+  });
+  await LocalNotifications.createChannel({
+    id: 'notetasks_pins',
+    name: 'Pinned items',
+    description: 'Pinned notes and tasks',
+    importance: 3,
+  });
+  await LocalNotifications.registerActionTypes({
+    types: [
+      {
+        id: PIN_ACTION_TYPE_NOTE,
+        actions: [{ id: 'complete', title: 'Complete' }],
+      },
+      {
+        id: PIN_ACTION_TYPE_TASK,
+        actions: [
+          { id: 'complete', title: 'Complete' },
+          { id: 'progress', title: '+1 progress' },
+          { id: 'regress', title: '-1 progress' },
+        ],
+      },
+    ],
+  });
+  setupAppliedVersion = SETUP_VERSION;
+}

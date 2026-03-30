@@ -24,7 +24,7 @@ function toApi(t: Task) {
   };
 }
 
-function fromApi(row: Record<string, unknown>): Task {
+export function taskFromApiRow(row: Record<string, unknown>): Task {
   return {
     id: row.id as string,
     type: 'task',
@@ -59,7 +59,7 @@ export function useTasks() {
     api
       .getTasks()
       .then((rows) => {
-        setTasks(rows.map(fromApi));
+        setTasks(rows.map(taskFromApiRow));
         loaded.current = true;
       })
       .catch(() => {

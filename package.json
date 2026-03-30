@@ -15,9 +15,13 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "sync": "npm run sync --prefix ../notetasks-android",
+    "android:embed": "npm run sync:embed --prefix ../notetasks-android",
     "android:open": "npm run open:android --prefix ../notetasks-android"
   },
   "dependencies": {
+    "@capacitor/app": "^7.1.2",
+    "@capacitor/core": "^7.6.1",
+    "@capacitor/local-notifications": "^7.0.6",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "uuid": "^13.0.0"

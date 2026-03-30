@@ -1,4 +1,6 @@
+import { LocalNotifications } from '@capacitor/local-notifications';
 import type { ThemeMode, AccentColor, UIScale, FontScale, ThemeSettings } from '../types';
+import type { AndroidNotifUserSettings } from '../notifications/androidSettings';
 import { APP_VERSION } from '../version';
 
 interface Props {
@@ -8,6 +10,8 @@ interface Props {
   localImportAvailable: boolean;
   onImportLocal: () => void | Promise<void>;
   onRerunTutorial?: () => void;
+  androidNotif?: AndroidNotifUserSettings;
+  onAndroidNotifChange?: (patch: Partial<AndroidNotifUserSettings>) => void;
 }
 
 const modes: { value: ThemeMode; label: string; icon: string }[] = [
@@ -51,6 +55,8 @@ export function ThemePanel({
   localImportAvailable,
   onImportLocal,
   onRerunTutorial,
+  androidNotif,
+  onAndroidNotifChange,
 }: Props) {
   return (
     <div className="theme-panel">
@@ -145,6 +151,74 @@ export function ThemePanel({
           style={{ width: 'auto' }}
         />
       </div>
+
+      {androidNotif && onAndroidNotifChange && (
+        <div className="theme-section">
+          <span className="theme-label">Android notifications</span>
+          <p className="theme-help">
+            Local push reminders before deadlines (24h, 6h, 1h, 15m, and at due), optional daily digest, and pinned
+            items. Requires
+            notification permission.
+          </p>
+          <button
+            type="button"
+            className="btn btn-full"
+            style={{ marginBottom: 12 }}
+            onClick={() => void LocalNotifications.requestPermissions()}
+          >
+            Allow notification permission
+          </button>
+          <div className="theme-modes">
+            <button
+              type="button"
+              className={`theme-mode-btn ${androidNotif.masterEnabled ? 'active' : ''}`}
+              onClick={() => onAndroidNotifChange({ masterEnabled: true })}
+            >
+              <span>✓</span>
+              <span>On</span>
+            </button>
+            <button
+              type="button"
+              className={`theme-mode-btn ${!androidNotif.masterEnabled ? 'active' : ''}`}
+              onClick={() => onAndroidNotifChange({ masterEnabled: false })}
+            >
+              <span>○</span>
+              <span>Off</span>
+            </button>
+          </div>
+          <p className="theme-help" style={{ marginTop: 12 }}>
+            Daily digest (today&apos;s schedule summary and open tasks)
+          </p>
+          <div className="theme-modes">
+            <button
+              type="button"
+              className={`theme-mode-btn ${androidNotif.digestEnabled ? 'active' : ''}`}
+              onClick={() => onAndroidNotifChange({ digestEnabled: true })}
+            >
+              <span>✓</span>
+              <span>Digest on</span>
+            </button>
+            <button
+              type="button"
+              className={`theme-mode-btn ${!androidNotif.digestEnabled ? 'active' : ''}`}
+              onClick={() => onAndroidNotifChange({ digestEnabled: false })}
+            >
+              <span>○</span>
+              <span>Digest off</span>
+            </button>
+          </div>
+          <label className="theme-label" style={{ display: 'block', marginTop: 12 }}>
+            Digest time
+          </label>
+          <input
+            type="time"
+            className="input"
+            value={androidNotif.digestTime ?? '08:00'}
+            onChange={(e) => onAndroidNotifChange({ digestTime: e.target.value })}
+            style={{ width: 'auto', marginTop: 8 }}
+          />
+        </div>
+      )}
 
       <div className="theme-section">
         <span className="theme-label">Jarvis</span>

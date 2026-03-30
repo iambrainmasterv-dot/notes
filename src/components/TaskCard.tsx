@@ -8,6 +8,11 @@ import { isExpired, itemOriginCardClass, childrenOf, buildParentPickerOptions, p
 import { Modal } from './Modal';
 import { DeadlinePicker } from './DeadlinePicker';
 import { SubItemModal } from './SubItemModal';
+import { useAndroidPinControls } from '../notifications/AndroidPinContext';
+import { isPinned, togglePinned } from '../notifications/pinsStorage';
+import { dismissPinNotification } from '../notifications/notificationActionHandler';
+import { useAssistantJarvisReady } from '../context/AssistantJarvisReadyContext';
+import { copyItemToClipboard } from '../utils/itemClipboardExport';
 
 const NoteCardLazy = lazy(() => import('./NoteCard').then((m) => ({ default: m.NoteCard })));
 
@@ -64,6 +69,11 @@ export function TaskCard({
   const [eParentVal, setEParentVal] = useState('');
   const [subModal, setSubModal] = useState<'note' | 'task' | null>(null);
   const [subExpanded, setSubExpanded] = useState(true);
+  const { supported: androidPin, notifyPinsChanged } = useAndroidPinControls();
+  const jarvisReady = useAssistantJarvisReady();
+  const [pinOn, setPinOn] = useState(() => isPinned('task', task.id));
+  const [copyBusy, setCopyBusy] = useState(false);
+  const [copyHint, setCopyHint] = useState<string | null>(null);
 
   const fromTemplate = Boolean(task.sourceScheduleTemplateId);
   const expired = !task.completed && isExpired(task.deadline, now);
@@ -101,6 +111,36 @@ export function TaskCard({
     const pt = effectiveTaskParentType(task);
     setEParentVal(task.parentId && pt ? `${pt}:${task.parentId}` : '');
   }, [editOpen, task]);
+
+  useEffect(() => {
+    setPinOn(isPinned('task', task.id));
+  }, [task.id]);
+
+  useEffect(() => {
+    if (!copyHint || copyHint.endsWith('…')) return;
+    const t = window.setTimeout(() => setCopyHint(null), 3200);
+    return () => window.clearTimeout(t);
+  }, [copyHint]);
+
+  const handleCopy = async () => {
+    if (copyBusy) return;
+    setCopyBusy(true);
+    setCopyHint(jarvisReady ? 'Formatting with Jarvis…' : 'Copying…');
+    try {
+      await copyItemToClipboard({
+        rootType: 'task',
+        root: task,
+        allNotes,
+        allTasks,
+        jarvisReady,
+      });
+      setCopyHint('Copied to clipboard');
+    } catch (e) {
+      setCopyHint(e instanceof Error ? e.message : 'Copy failed');
+    } finally {
+      setCopyBusy(false);
+    }
+  };
 
   const setProgress = (val: number) => {
     onUpdate(task.id, { progress: Math.max(0, Math.min(val, task.target)) });
@@ -198,6 +238,38 @@ export function TaskCard({
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           Edit
         </button>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm btn-icon-action"
+          onClick={() => void handleCopy()}
+          disabled={copyBusy}
+          title={jarvisReady ? 'Copy (Jarvis-formatted for other AIs)' : 'Copy as plain text'}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+            <rect x="9" y="9" width="13" height="13" rx="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+          </svg>
+          Copy
+        </button>
+        {androidPin && !task.completed && (
+          <button
+            type="button"
+            className={`btn btn-ghost btn-sm btn-icon-action ${pinOn ? 'active' : ''}`}
+            title={pinOn ? 'Unpin from notification shade' : 'Pin to notification shade'}
+            onClick={() => {
+              const wasPinned = isPinned('task', task.id);
+              togglePinned('task', task.id);
+              setPinOn(!wasPinned);
+              if (wasPinned) void dismissPinNotification('task', task.id);
+              notifyPinsChanged();
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <path d="M12 17v5M9 10V7a3 3 0 0 1 6 0v3M5 10h14v10a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V10z" />
+            </svg>
+            {pinOn ? 'Pinned' : 'Pin'}
+          </button>
+        )}
         {!task.completed && (
           <>
             <button type="button" className="btn btn-ghost btn-sm btn-icon-action" onClick={() => setSubModal('note')} title="Add subnote under this task">
@@ -226,6 +298,11 @@ export function TaskCard({
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
+        {copyHint && (
+          <p className="card-copy-hint" role="status">
+            {copyHint}
+          </p>
+        )}
       </div>
 
       {childCount > 0 && embedSubitems && (

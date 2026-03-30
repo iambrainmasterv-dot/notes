@@ -48,6 +48,66 @@ function getOllamaBaseFromEnv() {
   return env ? env.replace(/\/$/, '') : '';
 }
 
+function ollamaModel() {
+  return (process.env.OLLAMA_MODEL || 'llama3.2').trim() || 'llama3.2';
+}
+
+const FORMAT_ITEM_COPY_MAX_CONTEXT = 48000;
+
+const FORMAT_ITEM_COPY_SYSTEM = `You rewrite structured note/task export text into one plain-text block suitable as context for another AI agent. Preserve the full hierarchy and all important facts (titles, descriptions, deadlines, task progress/targets). Output only that block — no preamble, no markdown code fences, no chit-chat.`;
+
+/**
+ * Single-turn Ollama chat without tools.
+ * @param {string} base
+ * @param {string} model
+ * @param {{ role: string; content: string }[]} messages
+ */
+async function ollamaSimpleChat(base, model, messages) {
+  const url = `${base}/api/chat`;
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...ollamaFetchExtraHeaders(base),
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        stream: false,
+      }),
+    });
+  } catch (e) {
+    const code = /** @type {NodeJS.ErrnoException} */ (e)?.cause?.code || /** @type {NodeJS.ErrnoException} */ (e)?.code;
+    if (code === 'ECONNREFUSED' || code === 'ENOTFOUND') {
+      const err = new Error('Cannot reach Ollama');
+      err.code = 'OLLAMA_UNAVAILABLE';
+      throw err;
+    }
+    const err = new Error(e instanceof Error ? e.message : 'Ollama request failed');
+    err.code = 'OLLAMA_REQUEST_FAILED';
+    throw err;
+  }
+
+  const text = await res.text();
+  if (!res.ok) {
+    const err = new Error(text.slice(0, 500) || `Ollama HTTP ${res.status}`);
+    err.status = res.status;
+    if (res.status === 404) err.code = 'OLLAMA_NOT_FOUND';
+    else err.code = 'OLLAMA_HTTP_ERROR';
+    throw err;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    const err = new Error('Invalid JSON from Ollama');
+    err.code = 'OLLAMA_BAD_RESPONSE';
+    throw err;
+  }
+}
+
 router.get('/availability', async (req, res) => {
   const suggestedModel = suggestedOllamaModel();
   const base = getOllamaBaseFromEnv();
@@ -85,6 +145,58 @@ async function loadMutationFlag(userId) {
   if (rows.length === 0) return { ai_agent_mutations_enabled: true };
   return rows[0];
 }
+
+router.post('/format-item-copy', async (req, res) => {
+  try {
+    const ollamaBase = getOllamaBaseFromEnv();
+    if (!ollamaBase) {
+      return res.status(503).json({
+        error:
+          'Jarvis is not configured. Set OLLAMA_BASE_URL in the server environment, then restart the API.',
+      });
+    }
+    const raw = req.body?.context;
+    const context = typeof raw === 'string' ? raw : '';
+    if (!context.trim()) {
+      return res.status(400).json({ error: 'context string required' });
+    }
+    if (context.length > FORMAT_ITEM_COPY_MAX_CONTEXT) {
+      return res.status(400).json({ error: 'context too large' });
+    }
+
+    const model = ollamaModel();
+    const data = await ollamaSimpleChat(ollamaBase, model, [
+      { role: 'system', content: FORMAT_ITEM_COPY_SYSTEM },
+      {
+        role: 'user',
+        content: `Rewrite the following export for another agent (output only the rewritten text):\n\n${context}`,
+      },
+    ]);
+
+    const msg = data?.message;
+    const text =
+      msg && typeof msg === 'object' && typeof msg.content === 'string' ? msg.content.trim() : '';
+    if (!text) {
+      return res.status(503).json({ error: 'Ollama returned an empty response.' });
+    }
+    res.json({ text });
+  } catch (e) {
+    if (e.code === 'OLLAMA_UNAVAILABLE') {
+      return res.status(503).json({
+        error:
+          'Cannot reach Ollama. Install and run Ollama locally, or set OLLAMA_BASE_URL to a reachable instance.',
+      });
+    }
+    if (e.code === 'OLLAMA_NOT_FOUND') {
+      return res.status(503).json({
+        error:
+          'Ollama returned 404 — check OLLAMA_MODEL matches a pulled model (e.g. ollama pull llama3.2).',
+      });
+    }
+    console.error('POST /api/ai/format-item-copy', e);
+    res.status(503).json({ error: e.message || 'Format copy failed' });
+  }
+});
 
 router.post('/chat', async (req, res) => {
   try {

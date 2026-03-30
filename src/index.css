@@ -98,6 +98,14 @@
   --motion-sm: 0.18s;
   --motion-md: 0.28s;
   --motion-click: 0.1s;
+
+  /* Safe areas (requires viewport-fit=cover in index.html) */
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  /* Mobile header row height excluding top safe inset (toolbar content) */
+  --mobile-header-inner-h: 44px;
 }
 
 /* =============================================
@@ -991,6 +999,15 @@ body {
   min-width: calc(32px * var(--ui-scale));
 }
 
+.card-copy-hint {
+  width: 100%;
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
 /* =============================================
    Card Grid
    ============================================= */
@@ -1309,7 +1326,7 @@ body {
    ============================================= */
 .canvas-view {
   position: relative; width: 100%;
-  height: calc(100dvh - 160px);
+  height: calc(100dvh - 160px - var(--sat) - var(--sab));
   min-height: 400px;
   background: radial-gradient(circle, var(--border-subtle) 1px, transparent 1px);
   background-size: 20px 20px;
@@ -1494,68 +1511,162 @@ body {
 }
 
 /* =============================================
+   Mobile top bar + slide-out nav (≤768px)
+   ============================================= */
+.app-mobile-header {
+  display: none;
+}
+
+.app-mobile-menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.app-mobile-menu-btn:hover {
+  background: var(--surface-hover);
+}
+
+.app-mobile-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.app-mobile-header-brand .brand-text {
+  font-size: 1.05rem;
+}
+
+.app-nav-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  background: rgba(0, 0, 0, 0.45);
+  animation: appDrawerFadeIn var(--motion-sm) var(--ease-out-expo);
+}
+
+.app-nav-drawer-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 50;
+  width: min(320px, 88vw);
+  max-width: 100%;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  animation: appDrawerSlideIn var(--motion-md) var(--ease-out-expo);
+}
+
+@keyframes appDrawerFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes appDrawerSlideIn {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+.app-nav-drawer-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: calc(10px + var(--sat)) 12px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.app-nav-drawer-title {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.app-nav-drawer-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 12px 24px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.app-nav-drawer-scroll .sidebar-nav {
+  flex-direction: column;
+  flex: 0 0 auto;
+}
+
+.app-nav-drawer-scroll .nav-label {
+  display: inline;
+}
+
+.app-nav-drawer-scroll .nav-item {
+  justify-content: flex-start;
+}
+
+.app-nav-drawer-scroll .sidebar-bottom {
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+@media (min-width: 769px) {
+  .app-nav-drawer-backdrop,
+  .app-nav-drawer-panel {
+    display: none !important;
+  }
+}
+
+/* =============================================
    Responsive — Mobile
    ============================================= */
 @media (max-width: 768px) {
   .app { flex-direction: column; }
 
-  .sidebar {
-    width: 100%;
-    flex-direction: column;
-    flex-wrap: nowrap;
-    padding: 10px 12px;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-    align-items: stretch;
-    max-height: none;
-    position: relative;
-    z-index: 20;
-    overflow: visible;
+  .app-sidebar-desktop {
+    display: none !important;
   }
 
-  .sidebar-brand {
-    padding: 4px 0 10px 0;
-    width: 100%;
+  .app-mobile-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: calc(4px + var(--sat)) 6px 4px calc(2px + var(--sal));
+    padding-right: calc(6px + var(--sar));
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+  }
+
+  .app-mobile-header .notif-bell-wrap {
     flex-shrink: 0;
   }
 
-  .sidebar-nav {
-    flex-direction: row;
-    flex-wrap: nowrap;
-    flex: 0 0 auto;
-    gap: 2px;
-    width: 100%;
-    min-width: 0;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 6px;
-    margin-bottom: 2px;
-    scrollbar-width: thin;
+  .main-content {
+    max-height: none;
+    padding: 16px;
+    padding-left: calc(16px + var(--sal));
+    padding-right: calc(16px + var(--sar));
+    padding-bottom: calc(16px + var(--sab));
+    min-height: 50vh;
+    z-index: 0;
   }
-
-  .sidebar-nav li { flex-shrink: 0; }
-
-  .nav-label { display: none; }
-
-  .nav-item { padding: 10px 12px; min-width: 44px; justify-content: center; }
-
-  .sidebar-bottom {
-    display: flex;
-    flex-direction: column;
-    width: 100%;
-    flex: 0 0 auto;
-    margin-top: 4px;
-    padding-top: 8px;
-    border-top: 1px solid var(--border);
-    border-bottom: none;
-  }
-
-  .sidebar-bottom-row {
-    flex-direction: row;
-    justify-content: flex-start;
-  }
-
-  .main-content { max-height: none; padding: 16px; min-height: 50vh; z-index: 0; }
 
   .page-header { flex-direction: column; align-items: stretch; }
 
@@ -1565,7 +1676,10 @@ body {
 
   .card-grid { grid-template-columns: 1fr; }
 
-  .canvas-view { height: calc(100dvh - 280px); }
+  .canvas-view {
+    height: calc(100dvh - var(--sat) - var(--mobile-header-inner-h) - 32px - var(--sab));
+    min-height: 280px;
+  }
 
   .modal {
     width: 100%;

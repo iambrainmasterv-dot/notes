@@ -174,6 +174,12 @@ export const api = {
     }
   },
 
+  aiFormatItemCopy: (context: string) =>
+    request<{ text: string }>('/ai/format-item-copy', {
+      method: 'POST',
+      body: JSON.stringify({ context }),
+    }),
+
   aiChat: (body: {
     messages: { role: 'user' | 'assistant'; content: string }[];
     clientIsoTime?: string;
