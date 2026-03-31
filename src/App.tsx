@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import type { AssistantWorkContext, Page, ThemeSettings } from './types';
 import type { AppUser } from './auth/AuthProvider';
@@ -25,6 +25,8 @@ import { AssistantPage } from './pages/AssistantPage';
 import { AssistantDock } from './components/AssistantDock';
 import { ThemePanel } from './components/ThemePanel';
 import { useAssistantChat } from './hooks/useAssistantChat';
+import { useGlobalUiTapSound } from './hooks/useGlobalUiTapSound';
+import { playAppSound } from './audio/appSounds';
 import { NotificationBell } from './components/NotificationBell';
 import { Toasts } from './components/Toasts';
 import { GreetingScreen } from './components/GreetingScreen';
@@ -234,6 +236,7 @@ function AppNavSections({
 }
 
 export default function App() {
+  useGlobalUiTapSound();
   const { user, isGuest, loading, signOut } = useAuth();
 
   if (loading) {
@@ -255,7 +258,11 @@ export default function App() {
 
 function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
   const { user, isGuest } = useAuth();
-  const [page, setPage] = useState<Page>('pool');
+  const [page, setPageInternal] = useState<Page>('pool');
+  const setPage = useCallback((next: Page | ((prev: Page) => Page)) => {
+    playAppSound('tabSwitch');
+    setPageInternal(next);
+  }, []);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const { notes, addNote, updateNote, recoverNote, setNotes, refetch: refetchNotes } = useNotes();
@@ -319,7 +326,7 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
     const goPool = () => setPage('pool');
     window.addEventListener('notetasksOpenPool', goPool);
     return () => window.removeEventListener('notetasksOpenPool', goPool);
-  }, []);
+  }, [setPage]);
 
   const completedCount = useMemo(
     () => notes.filter((n) => n.completed).length + tasks.filter((t) => t.completed).length,
@@ -480,13 +487,26 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
     if (!ctx) return;
     setPage(ctx);
     setNotifOpen(false);
-  }, []);
+  }, [setPage]);
 
   const assistantChat = useAssistantChat({
     mutationsEnabled: settings.aiAgentMutationsEnabled,
     onWorkContext: handleAssistantWorkContext,
     onDataChanged: refetchWorkspace,
   });
+
+  const prevAssistantLoading = useRef(assistantChat.loading);
+  useEffect(() => {
+    const was = prevAssistantLoading.current;
+    prevAssistantLoading.current = assistantChat.loading;
+    if (was && !assistantChat.loading) {
+      const msgs = assistantChat.messages;
+      const last = msgs[msgs.length - 1];
+      if (last?.role === 'assistant') {
+        playAppSound('jarvisDone');
+      }
+    }
+  }, [assistantChat.loading, assistantChat.messages]);
 
   const assistantPanelProps = {
     mutationsEnabled: settings.aiAgentMutationsEnabled,

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
 import type { AppNotification } from '../types';
+import type { AppSoundId } from '../audio/appSounds';
 import {
   scanDeadlinePanelCandidates,
   staleCompletedPanelCandidate,
@@ -12,6 +13,7 @@ export interface ToastItem {
   title: string;
   message: string;
   level: AppNotification['level'];
+  sound?: AppSoundId;
 }
 
 export type { StaleCompletedInput };
@@ -48,7 +50,16 @@ export function useNotifications(
       };
 
       setNotifications((prev) => [n, ...prev].slice(0, 200));
-      setToasts((prev) => [...prev, { id: n.id, title: n.title, message: n.message, level: n.level }]);
+      setToasts((prev) => [
+        ...prev,
+        {
+          id: n.id,
+          title: n.title,
+          message: n.message,
+          level: n.level,
+          sound: 'deadlineAlert',
+        },
+      ]);
     }
   }, [notes, tasks, now]);
 
@@ -69,7 +80,16 @@ export function useNotifications(
       dedupeKey,
     };
     setNotifications((prev) => [n, ...prev].slice(0, 200));
-    setToasts((prev) => [...prev, { id: n.id, title: n.title, message: n.message, level: n.level }]);
+    setToasts((prev) => [
+      ...prev,
+      {
+        id: n.id,
+        title: n.title,
+        message: n.message,
+        level: n.level,
+        sound: 'completedTabReminder',
+      },
+    ]);
   }, [notes, tasks, now, staleCompleted]);
 
   useEffect(() => {

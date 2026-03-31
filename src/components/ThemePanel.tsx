@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import type { ThemeMode, AccentColor, UIScale, FontScale, ThemeSettings } from '../types';
 import type { AndroidNotifUserSettings } from '../notifications/androidSettings';
+import { loadToastSoundEnabled, saveToastSoundEnabled } from '../audio/toastSoundSettings';
 import { APP_VERSION } from '../version';
 
 interface Props {
@@ -58,6 +60,8 @@ export function ThemePanel({
   androidNotif,
   onAndroidNotifChange,
 }: Props) {
+  const [toastSounds, setToastSounds] = useState(loadToastSoundEnabled);
+
   return (
     <div className="theme-panel">
       <div className="theme-section">
@@ -152,13 +156,51 @@ export function ThemePanel({
         />
       </div>
 
+      <div className="theme-section">
+        <span className="theme-label">App sounds</span>
+        <p className="theme-help">
+          When enabled, the app plays short MP3s from <code>public/sounds/</code>: deadline toasts (
+          <code>notetasks-notify-deadline.mp3</code>), Completed-tab reminder (
+          <code>notetasks-notify-completed-tab.mp3</code>), Jarvis reply (
+          <code>notetasks-jarvis-done.mp3</code>), tab change (<code>notetasks-tab.mp3</code>), sign-in /
+          guest (<code>notetasks-auth.mp3</code>), most other clicks (<code>notetasks-ui-tap.mp3</code>),
+          new note/task or Jarvis send (<code>notetasks-create.mp3</code>). Use ~0.2–1.2s clips, normalized.
+        </p>
+        <div className="theme-modes">
+          <button
+            type="button"
+            className={`theme-mode-btn ${toastSounds ? 'active' : ''}`}
+            onClick={() => {
+              saveToastSoundEnabled(true);
+              setToastSounds(true);
+            }}
+          >
+            <span>✓</span>
+            <span>Sound on</span>
+          </button>
+          <button
+            type="button"
+            className={`theme-mode-btn ${!toastSounds ? 'active' : ''}`}
+            onClick={() => {
+              saveToastSoundEnabled(false);
+              setToastSounds(false);
+            }}
+          >
+            <span>○</span>
+            <span>Sound off</span>
+          </button>
+        </div>
+      </div>
+
       {androidNotif && onAndroidNotifChange && (
         <div className="theme-section">
           <span className="theme-label">Android notifications</span>
           <p className="theme-help">
-            Local push reminders before deadlines (24h, 6h, 1h, 15m, and at due), optional daily digest, and pinned
-            items. Requires
-            notification permission.
+            Deadline pushes use your per-item reminder (default 10 minutes before, plus at due time). Optional daily
+            digest, ~2h check-in when you have due-today items, daily progress, or matching templates tomorrow, and
+            pinned items. Custom sound: copy{' '}
+            <code>public/sounds/notetasks-notify-deadline.mp3</code> to Android{' '}
+            <code>res/raw/notetasks_notify_deadline.mp3</code>. Requires notification permission.
           </p>
           <button
             type="button"
@@ -217,6 +259,28 @@ export function ThemePanel({
             onChange={(e) => onAndroidNotifChange({ digestTime: e.target.value })}
             style={{ width: 'auto', marginTop: 8 }}
           />
+          <p className="theme-help" style={{ marginTop: 12 }}>
+            ~2h check-in (paused 22:00–08:00). Only sent if something is due today, daily progress exists, or a
+            schedule template matches tomorrow.
+          </p>
+          <div className="theme-modes">
+            <button
+              type="button"
+              className={`theme-mode-btn ${androidNotif.periodicDigestEnabled ? 'active' : ''}`}
+              onClick={() => onAndroidNotifChange({ periodicDigestEnabled: true })}
+            >
+              <span>✓</span>
+              <span>Check-ins on</span>
+            </button>
+            <button
+              type="button"
+              className={`theme-mode-btn ${!androidNotif.periodicDigestEnabled ? 'active' : ''}`}
+              onClick={() => onAndroidNotifChange({ periodicDigestEnabled: false })}
+            >
+              <span>○</span>
+              <span>Check-ins off</span>
+            </button>
+          </div>
         </div>
       )}
 

@@ -15,6 +15,7 @@ interface Props {
     title: string;
     description: string;
     deadline?: string;
+    reminderMinutesBefore?: number;
     parentId: string;
     parentType: ParentType;
     daily?: boolean;
@@ -24,6 +25,7 @@ interface Props {
     description: string;
     target: number;
     deadline?: string;
+    reminderMinutesBefore?: number;
     parentId: string;
     parentType: ParentType;
     daily?: boolean;
@@ -43,6 +45,7 @@ export function SubItemModal({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [deadline, setDeadline] = useState<string | undefined>();
+  const [reminderMin, setReminderMin] = useState(10);
   const [target, setTarget] = useState(10);
 
   useEffect(() => {
@@ -50,6 +53,7 @@ export function SubItemModal({
     setTitle('');
     setDescription('');
     setDeadline(undefined);
+    setReminderMin(10);
     setTarget(10);
   }, [open, mode, parentId]);
 
@@ -60,6 +64,7 @@ export function SubItemModal({
         title: title.trim(),
         description: description.trim(),
         deadline,
+        reminderMinutesBefore: deadline ? reminderMin : undefined,
         parentId,
         parentType,
         daily: dailyBranch || undefined,
@@ -71,6 +76,7 @@ export function SubItemModal({
         description: description.trim(),
         target,
         deadline,
+        reminderMinutesBefore: deadline ? reminderMin : undefined,
         parentId,
         parentType,
         daily: dailyBranch || undefined,
@@ -100,7 +106,13 @@ export function SubItemModal({
         </div>
       )}
       <div key={`dl-${open}-${dailyBranch}`}>
-        <DeadlinePicker value={deadline} onChange={setDeadline} timeOnly={dailyBranch} />
+        <DeadlinePicker
+          value={deadline}
+          onChange={setDeadline}
+          timeOnly={dailyBranch}
+          reminderMinutesBefore={deadline ? reminderMin : undefined}
+          onReminderMinutesChange={setReminderMin}
+        />
       </div>
       <button type="button" className="btn btn-primary btn-full" onClick={handleSubmit}>
         Create

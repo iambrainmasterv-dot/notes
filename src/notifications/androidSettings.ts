@@ -6,12 +6,15 @@ export type AndroidNotifUserSettings = {
   digestEnabled: boolean;
   /** Local time HH:mm */
   digestTime: string;
+  /** ~2h summary when due-today / daily / tomorrow templates exist (quiet 22:00–08:00). */
+  periodicDigestEnabled: boolean;
 };
 
 const defaults: AndroidNotifUserSettings = {
   masterEnabled: true,
   digestEnabled: false,
   digestTime: '08:00',
+  periodicDigestEnabled: true,
 };
 
 export function loadAndroidNotifSettings(): AndroidNotifUserSettings {
@@ -23,6 +26,7 @@ export function loadAndroidNotifSettings(): AndroidNotifUserSettings {
       masterEnabled: p.masterEnabled !== false,
       digestEnabled: p.digestEnabled === true,
       digestTime: typeof p.digestTime === 'string' && /^\d{1,2}:\d{2}$/.test(p.digestTime) ? p.digestTime : defaults.digestTime,
+      periodicDigestEnabled: p.periodicDigestEnabled !== false,
     };
   } catch {
     return { ...defaults };

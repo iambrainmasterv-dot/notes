@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { api } from '../api/client';
+import { playAppSound } from '../audio/appSounds';
 import type { AssistantWorkContext } from '../types';
 
 export type PendingMutation = {
@@ -67,6 +68,7 @@ export function useAssistantChat(options: {
     const trimmed = text.trim();
     if (!trimmed) return;
     if (sendInFlightRef.current) return;
+    playAppSound('createAction');
     sendInFlightRef.current = true;
     setError(null);
     const cleared = clearOpenProposals(messagesRef.current);

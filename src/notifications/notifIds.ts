@@ -13,6 +13,9 @@ export function localNotificationNumericId(domain: string, key: string): number 
 /** Single id for digest one-shot (rescheduled on each sync). */
 export const DIGEST_NOTIFICATION_ID = 1_847_100_201;
 
+/** ~2h periodic digest (quiet hours 22:00–08:00); only scheduled when body has content. */
+export const OCCASIONAL_DIGEST_NOTIFICATION_ID = 1_847_100_204;
+
 export function staleNativeNotificationId(userId: string): number {
   return localNotificationNumericId('staleNative', userId);
 }

@@ -65,6 +65,7 @@ export function TaskCard({
   const [eTitle, setETitle] = useState('');
   const [eDesc, setEDesc] = useState('');
   const [eDeadline, setEDeadline] = useState<string | undefined>();
+  const [eReminderMin, setEReminderMin] = useState(10);
   const [eTarget, setETarget] = useState(10);
   const [eParentVal, setEParentVal] = useState('');
   const [subModal, setSubModal] = useState<'note' | 'task' | null>(null);
@@ -107,6 +108,7 @@ export function TaskCard({
     setETitle(task.title);
     setEDesc(task.description);
     setEDeadline(task.deadline);
+    setEReminderMin(task.reminderMinutesBefore ?? 10);
     setETarget(task.target);
     const pt = effectiveTaskParentType(task);
     setEParentVal(task.parentId && pt ? `${pt}:${task.parentId}` : '');
@@ -162,6 +164,7 @@ export function TaskCard({
       description: eDesc.trim(),
       deadline: eDeadline,
       target: eTarget,
+      reminderMinutesBefore: eDeadline ? eReminderMin : undefined,
     };
     if (allowParentEdit) {
       const parsed = eParentVal ? parseParentPickerValue(eParentVal) : null;
@@ -254,7 +257,7 @@ export function TaskCard({
         {androidPin && !task.completed && (
           <button
             type="button"
-            className={`btn btn-ghost btn-sm btn-icon-action ${pinOn ? 'active' : ''}`}
+            className={`btn btn-ghost btn-sm btn-icon-action btn-pin-notify ${pinOn ? 'is-pinned' : ''}`}
             title={pinOn ? 'Unpin from notification shade' : 'Pin to notification shade'}
             onClick={() => {
               const wasPinned = isPinned('task', task.id);
@@ -386,7 +389,13 @@ export function TaskCard({
           <input className="input" type="number" min={1} value={eTarget} onChange={(e) => setETarget(Number(e.target.value))} />
         </div>
         <div key={`dl-${editOpen}-${task.id}`}>
-          <DeadlinePicker value={eDeadline} onChange={setEDeadline} timeOnly={!!task.daily} />
+          <DeadlinePicker
+            value={eDeadline}
+            onChange={setEDeadline}
+            timeOnly={!!task.daily}
+            reminderMinutesBefore={eReminderMin}
+            onReminderMinutesChange={setEReminderMin}
+          />
         </div>
         {allowParentEdit && (
           <div className="form-group">

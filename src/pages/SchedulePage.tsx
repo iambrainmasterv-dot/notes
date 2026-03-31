@@ -83,10 +83,12 @@ export function SchedulePage({
   const [nTitle, setNTitle] = useState('');
   const [nDesc, setNDesc] = useState('');
   const [nDeadline, setNDeadline] = useState<string | undefined>();
+  const [nReminderMin, setNReminderMin] = useState(10);
   const [tTitle, setTTitle] = useState('');
   const [tDesc, setTDesc] = useState('');
   const [tTarget, setTTarget] = useState(10);
   const [tDeadline, setTDeadline] = useState<string | undefined>();
+  const [tReminderMin, setTReminderMin] = useState(10);
   const [nParentVal, setNParentVal] = useState('');
   const [tParentVal, setTParentVal] = useState('');
 
@@ -179,8 +181,12 @@ export function SchedulePage({
     if (note) updateNote(id, { collapsed: !note.collapsed });
   };
 
-  const resetNoteForm = () => { setNTitle(''); setNDesc(''); setNDeadline(undefined); setNParentVal(''); };
-  const resetTaskForm = () => { setTTitle(''); setTDesc(''); setTTarget(10); setTDeadline(undefined); setTParentVal(''); };
+  const resetNoteForm = () => {
+    setNTitle(''); setNDesc(''); setNDeadline(undefined); setNReminderMin(10); setNParentVal('');
+  };
+  const resetTaskForm = () => {
+    setTTitle(''); setTDesc(''); setTTarget(10); setTDeadline(undefined); setTReminderMin(10); setTParentVal('');
+  };
 
   const handleAddNote = () => {
     if (!nTitle.trim()) return;
@@ -189,6 +195,7 @@ export function SchedulePage({
       title: nTitle.trim(),
       description: nDesc.trim(),
       deadline: nDeadline,
+      reminderMinutesBefore: nDeadline ? nReminderMin : undefined,
       daily: true,
       parentId: parsed?.id,
       parentType: parsed?.type,
@@ -205,6 +212,7 @@ export function SchedulePage({
       description: tDesc.trim(),
       target: tTarget,
       deadline: tDeadline,
+      reminderMinutesBefore: tDeadline ? tReminderMin : undefined,
       daily: true,
       parentId: parsed?.id,
       parentType: parsed?.type,
@@ -692,7 +700,13 @@ export function SchedulePage({
           <label>Description</label>
           <textarea className="input textarea" value={nDesc} onChange={(e) => setNDesc(e.target.value)} rows={3} placeholder="Optional details..." />
         </div>
-        <DeadlinePicker value={nDeadline} onChange={setNDeadline} timeOnly />
+        <DeadlinePicker
+          value={nDeadline}
+          onChange={setNDeadline}
+          timeOnly
+          reminderMinutesBefore={nDeadline ? nReminderMin : undefined}
+          onReminderMinutesChange={setNReminderMin}
+        />
         <div className="form-group">
           <label>Parent (daily items only)</label>
           <select className="input select" value={nParentVal} onChange={(e) => setNParentVal(e.target.value)}>
@@ -719,7 +733,13 @@ export function SchedulePage({
           <label>Target amount</label>
           <input className="input" type="number" min={1} value={tTarget} onChange={(e) => setTTarget(Number(e.target.value))} />
         </div>
-        <DeadlinePicker value={tDeadline} onChange={setTDeadline} timeOnly />
+        <DeadlinePicker
+          value={tDeadline}
+          onChange={setTDeadline}
+          timeOnly
+          reminderMinutesBefore={tDeadline ? tReminderMin : undefined}
+          onReminderMinutesChange={setTReminderMin}
+        />
         <div className="form-group">
           <label>Parent (daily items only)</label>
           <select className="input select" value={tParentVal} onChange={(e) => setTParentVal(e.target.value)}>

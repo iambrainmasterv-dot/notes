@@ -994,6 +994,23 @@ body {
   font-size: 0.76rem;
 }
 
+/* Pinned → notification shade (Android): clear “on” state */
+.card-actions .btn-pin-notify.is-pinned {
+  background: color-mix(in srgb, var(--primary) 18%, var(--surface));
+  color: var(--primary);
+  border: 1px solid color-mix(in srgb, var(--primary) 45%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 22%, transparent);
+  font-weight: 600;
+}
+
+.card-actions .btn-pin-notify.is-pinned:hover {
+  background: color-mix(in srgb, var(--primary) 28%, var(--surface));
+}
+
+.card-actions .btn-pin-notify.is-pinned svg {
+  stroke: var(--primary);
+}
+
 .card-actions .btn-icon-only {
   padding: calc(6px * var(--ui-scale));
   min-width: calc(32px * var(--ui-scale));

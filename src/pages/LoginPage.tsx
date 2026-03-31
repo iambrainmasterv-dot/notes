@@ -3,6 +3,7 @@ import { useAuth } from '../auth/AuthProvider';
 import { api } from '../api/client';
 import { readResetTokenFromUrl } from '../auth/resetTokenFromUrl';
 import { APP_VERSION } from '../version';
+import { playAppSound } from '../audio/appSounds';
 
 const RESET_TOKEN_STORAGE_KEY = 'notesapp_pw_reset_token';
 
@@ -140,6 +141,7 @@ export function LoginPage() {
         setConfirmNewPw('');
         setMode('signin');
         setSuccess('Password updated. Sign in with your new password.');
+        playAppSound('authSuccess');
         const path = window.location.pathname + window.location.hash;
         window.history.replaceState({}, document.title, path);
       } catch (err) {
@@ -169,6 +171,8 @@ export function LoginPage() {
 
     if (err) {
       setError(err);
+    } else {
+      playAppSound('authSuccess');
     }
   };
 
@@ -313,6 +317,7 @@ export function LoginPage() {
                 className="btn-link"
                 onClick={() => {
                   setError(null);
+                  playAppSound('authSuccess');
                   continueAsGuest();
                 }}
               >

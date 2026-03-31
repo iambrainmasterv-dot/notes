@@ -5,6 +5,7 @@ import { api } from '../api/client';
 import { useAuth } from '../auth/AuthProvider';
 import { storage } from '../storage';
 import { nextCanvasPosition } from '../utils';
+import { playAppSound } from '../audio/appSounds';
 
 function toApi(n: Note) {
   return {
@@ -23,6 +24,7 @@ function toApi(n: Note) {
     daily: n.daily ?? false,
     source_schedule_template_id: n.sourceScheduleTemplateId ?? null,
     source_occurrence_date: n.sourceOccurrenceDate ?? null,
+    reminder_minutes_before: n.reminderMinutesBefore ?? null,
   };
 }
 
@@ -43,6 +45,10 @@ function fromApi(row: Record<string, unknown>): Note {
     daily: row.daily as boolean,
     sourceScheduleTemplateId: (row.source_schedule_template_id as string) || undefined,
     sourceOccurrenceDate: (row.source_occurrence_date as string) || undefined,
+    reminderMinutesBefore:
+      row.reminder_minutes_before != null && row.reminder_minutes_before !== ''
+        ? Number(row.reminder_minutes_before)
+        : undefined,
   };
 }
 
@@ -87,6 +93,7 @@ export function useNotes() {
       setNotes((prev) => {
         const pos = data.position ?? nextCanvasPosition(prev.filter((n) => !n.completed && !n.parentId).length);
         const note: Note = { ...data, id, type: 'note', completed: false, createdAt: now, position: pos };
+        playAppSound('createAction');
         api.createNote(toApi(note)).catch(() => {});
         return [...prev, note];
       });
@@ -102,7 +109,12 @@ export function useNotes() {
     if (patch.description !== undefined) dbPatch.description = patch.description;
     if (patch.completed !== undefined) dbPatch.completed = patch.completed;
     if (patch.completedAt !== undefined) dbPatch.completed_at = patch.completedAt ?? null;
-    if (patch.deadline !== undefined) dbPatch.deadline = patch.deadline ?? null;
+    if ('deadline' in patch) {
+      dbPatch.deadline = patch.deadline ?? null;
+    }
+    if ('reminderMinutesBefore' in patch || ('deadline' in patch && !patch.deadline)) {
+      dbPatch.reminder_minutes_before = patch.deadline ? (patch.reminderMinutesBefore ?? null) : null;
+    }
     if (patch.parentId !== undefined) dbPatch.parent_id = patch.parentId ?? null;
     if (patch.parentType !== undefined) dbPatch.parent_type = patch.parentType ?? null;
     if (patch.position !== undefined) { dbPatch.position_x = patch.position?.x ?? null; dbPatch.position_y = patch.position?.y ?? null; }

@@ -4,8 +4,17 @@ import { formatDeadlineForNotification } from './deadlineFormat';
 
 export const NOTIF_HOUR_MS = 60 * 60 * 1000;
 export const NOTIF_DAY_MS = 24 * NOTIF_HOUR_MS;
-export const NOTIF_6H_MS = 6 * NOTIF_HOUR_MS;
-export const NOTIF_15MIN_MS = 15 * 60 * 1000;
+export const NOTIF_MINUTE_MS = 60 * 1000;
+
+/** Default Android push reminder before deadline (minutes). */
+export const DEFAULT_DEADLINE_REMINDER_MINUTES = 10;
+
+export function effectiveReminderMinutesBefore(item: Note | Task): number {
+  const v = item.reminderMinutesBefore;
+  if (v === 0) return 0;
+  if (v == null || !Number.isFinite(v)) return DEFAULT_DEADLINE_REMINDER_MINUTES;
+  return Math.max(0, Math.min(7 * 24 * 60, Math.round(v)));
+}
 
 export interface StaleCompletedInput {
   userId: string;
@@ -85,7 +94,7 @@ export function staleCompletedPanelCandidate(
   };
 }
 
-/** Android: schedule at deadline − 24h, − 6h, − 1h, − 15m, and at deadline (each only if still in the future). */
+/** Android: schedule at deadline − reminder (per item, default 10m) and at deadline. */
 export interface DeadlineScheduleSlot {
   stringId: string;
   atMs: number;
@@ -123,42 +132,23 @@ export function buildDeadlineScheduleSlots(notes: Note[], tasks: Task[], now: nu
     }
     if (deadlineMs <= now) continue;
 
-    const at24 = deadlineMs - NOTIF_DAY_MS;
-    if (at24 > now) {
-      slots.push({
-        stringId: `deadline:${item.type}:${item.id}:24h`,
-        atMs: at24,
-        title: `${label(item)} expiring soon`,
-        body: deadlineReminderBody(item.title, deadline, 'Within about 24 hours.'),
-      });
+    const mins = effectiveReminderMinutesBefore(item);
+    if (mins > 0) {
+      const atPre = deadlineMs - mins * NOTIF_MINUTE_MS;
+      if (atPre > now) {
+        const phrase =
+          mins >= 60
+            ? `In about ${mins >= 120 ? `${Math.round(mins / 60)} hours` : '1 hour'}.`
+            : `In about ${mins} minutes.`;
+        slots.push({
+          stringId: `deadline:${item.type}:${item.id}:pre`,
+          atMs: atPre,
+          title: `${label(item)} reminder`,
+          body: deadlineReminderBody(item.title, deadline, phrase),
+        });
+      }
     }
-    const at6 = deadlineMs - NOTIF_6H_MS;
-    if (at6 > now) {
-      slots.push({
-        stringId: `deadline:${item.type}:${item.id}:6h`,
-        atMs: at6,
-        title: `${label(item)} due soon`,
-        body: deadlineReminderBody(item.title, deadline, 'Within about 6 hours.'),
-      });
-    }
-    const at1 = deadlineMs - NOTIF_HOUR_MS;
-    if (at1 > now) {
-      slots.push({
-        stringId: `deadline:${item.type}:${item.id}:1h`,
-        atMs: at1,
-        title: `${label(item)} expiring very soon`,
-        body: deadlineReminderBody(item.title, deadline, 'Within about an hour.'),
-      });
-    }
-    const at15 = deadlineMs - NOTIF_15MIN_MS;
-    if (at15 > now) {
-      slots.push({
-        stringId: `deadline:${item.type}:${item.id}:15m`,
-        atMs: at15,
-        title: `${label(item)} almost due`,
-        body: deadlineReminderBody(item.title, deadline, 'Within about 15 minutes.'),
-      });
-    }
+
     slots.push({
       stringId: `deadline:${item.type}:${item.id}:due`,
       atMs: deadlineMs,

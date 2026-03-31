@@ -73,6 +73,7 @@ export function NoteCard({
   const [eTitle, setETitle] = useState('');
   const [eDesc, setEDesc] = useState('');
   const [eDeadline, setEDeadline] = useState<string | undefined>();
+  const [eReminderMin, setEReminderMin] = useState(10);
   const [eParentVal, setEParentVal] = useState('');
   const [subModal, setSubModal] = useState<'note' | 'task' | null>(null);
   const { supported: androidPin, notifyPinsChanged } = useAndroidPinControls();
@@ -113,9 +114,10 @@ export function NoteCard({
     setETitle(note.title);
     setEDesc(note.description);
     setEDeadline(note.deadline);
+    setEReminderMin(note.reminderMinutesBefore ?? 10);
     const pt = effectiveNoteParentType(note);
     setEParentVal(note.parentId && pt ? `${pt}:${note.parentId}` : '');
-  }, [editOpen, note.id, note.title, note.description, note.deadline, note.parentId, note.parentType]);
+  }, [editOpen, note.id, note.title, note.description, note.deadline, note.reminderMinutesBefore, note.parentId, note.parentType]);
 
   useEffect(() => {
     setPinOn(isPinned('note', note.id));
@@ -153,6 +155,7 @@ export function NoteCard({
       title: eTitle.trim(),
       description: eDesc.trim(),
       deadline: eDeadline,
+      reminderMinutesBefore: eDeadline ? eReminderMin : undefined,
     };
     if (allowParentEdit) {
       const parsed = eParentVal ? parseParentPickerValue(eParentVal) : null;
@@ -220,7 +223,7 @@ export function NoteCard({
         {androidPin && !note.completed && (
           <button
             type="button"
-            className={`btn btn-ghost btn-sm btn-icon-action ${pinOn ? 'active' : ''}`}
+            className={`btn btn-ghost btn-sm btn-icon-action btn-pin-notify ${pinOn ? 'is-pinned' : ''}`}
             title={pinOn ? 'Unpin from notification shade' : 'Pin to notification shade'}
             onClick={() => {
               const wasPinned = isPinned('note', note.id);
@@ -346,7 +349,13 @@ export function NoteCard({
           <textarea className="input textarea" value={eDesc} onChange={(e) => setEDesc(e.target.value)} rows={3} />
         </div>
         <div key={`dl-${editOpen}-${note.id}`}>
-          <DeadlinePicker value={eDeadline} onChange={setEDeadline} timeOnly={!!note.daily} />
+          <DeadlinePicker
+            value={eDeadline}
+            onChange={setEDeadline}
+            timeOnly={!!note.daily}
+            reminderMinutesBefore={eReminderMin}
+            onReminderMinutesChange={setEReminderMin}
+          />
         </div>
         {allowParentEdit && (
           <div className="form-group">

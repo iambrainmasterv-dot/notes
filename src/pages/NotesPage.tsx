@@ -48,6 +48,7 @@ export function NotesPage({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [deadline, setDeadline] = useState<string | undefined>();
+  const [reminderMin, setReminderMin] = useState(10);
   const [parentVal, setParentVal] = useState('');
 
   const [tableDeleteId, setTableDeleteId] = useState<string | null>(null);
@@ -115,7 +116,7 @@ export function NotesPage({
   );
 
   const resetForm = () => {
-    setTitle(''); setDescription(''); setDeadline(undefined); setParentVal('');
+    setTitle(''); setDescription(''); setDeadline(undefined); setReminderMin(10); setParentVal('');
   };
 
   const handleSubmit = () => {
@@ -125,6 +126,7 @@ export function NotesPage({
       title: title.trim(),
       description: description.trim(),
       deadline,
+      reminderMinutesBefore: deadline ? reminderMin : undefined,
       parentId: parsed?.id,
       parentType: parsed?.type,
     });
@@ -320,7 +322,12 @@ export function NotesPage({
           <label>Description</label>
           <textarea className="input textarea" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder="Optional details..." />
         </div>
-        <DeadlinePicker value={deadline} onChange={setDeadline} />
+        <DeadlinePicker
+          value={deadline}
+          onChange={setDeadline}
+          reminderMinutesBefore={deadline ? reminderMin : undefined}
+          onReminderMinutesChange={setReminderMin}
+        />
         <div className="form-group">
           <label>Parent</label>
           <select className="input select" value={parentVal} onChange={(e) => setParentVal(e.target.value)}>

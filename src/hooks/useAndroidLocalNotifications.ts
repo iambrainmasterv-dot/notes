@@ -12,9 +12,18 @@ import {
 import { buildDigestBody, nextDigestFireAtMs } from '../notifications/digestBody';
 import {
   DIGEST_NOTIFICATION_ID,
+  OCCASIONAL_DIGEST_NOTIFICATION_ID,
   localNotificationNumericId,
   staleNativeNotificationId,
 } from '../notifications/notifIds';
+import { ANDROID_ALERTS_CHANNEL_ID } from '../notifications/androidNotifSound';
+import {
+  buildOccasionalDigestBody,
+  loadOccasionalNextScheduledAt,
+  nextOccasionalDigestFireAfterMs,
+  occasionalDigestHasContent,
+  saveOccasionalNextScheduledAt,
+} from '../notifications/occasionalDigest';
 import {
   loadNotificationPins,
   setPinned,
@@ -81,6 +90,7 @@ async function rescheduleAll(ctx: Params): Promise<void> {
   const { notes, tasks, now, staleCompleted, userId, scheduleTemplates, dailyResetTime, androidNotif } = ctx;
 
   if (!androidNotif.masterEnabled) {
+    saveOccasionalNextScheduledAt(null);
     clearAllPinScheduleSignatures();
     await cancelAllNativePinsFromStorage();
     await cancelOurPending();
@@ -108,7 +118,7 @@ async function rescheduleAll(ctx: Params): Promise<void> {
       id: localNotificationNumericId('dl', slot.stringId),
       title: slot.title,
       body: slot.body,
-      channelId: 'notetasks_deadlines',
+      channelId: ANDROID_ALERTS_CHANNEL_ID,
       schedule: { at: new Date(slot.atMs), allowWhileIdle: true },
       extra: { notetasks: true, kind: 'deadline', stringId: slot.stringId },
     });
@@ -125,6 +135,32 @@ async function rescheduleAll(ctx: Params): Promise<void> {
       schedule: { at: new Date(at), allowWhileIdle: true },
       extra: { notetasks: true, kind: 'digest' },
     });
+  }
+
+  if (androidNotif.periodicDigestEnabled) {
+    const graceMs = 15_000;
+    let periodicAt = loadOccasionalNextScheduledAt();
+    if (periodicAt == null || periodicAt <= now + graceMs) {
+      periodicAt = nextOccasionalDigestFireAfterMs(now);
+    }
+    if (occasionalDigestHasContent(notes, tasks, scheduleTemplates, dailyResetTime, periodicAt)) {
+      saveOccasionalNextScheduledAt(periodicAt);
+      const fullBody = buildOccasionalDigestBody(notes, tasks, scheduleTemplates, dailyResetTime, periodicAt);
+      const firstLine = fullBody.split('\n')[0] ?? 'NoteTasks';
+      toScheduleNonPins.push({
+        id: OCCASIONAL_DIGEST_NOTIFICATION_ID,
+        title: 'NoteTasks — check-in',
+        body: firstLine.length > 180 ? `${firstLine.slice(0, 177)}…` : firstLine,
+        largeBody: fullBody.length > firstLine.length ? fullBody : undefined,
+        channelId: ANDROID_ALERTS_CHANNEL_ID,
+        schedule: { at: new Date(periodicAt), allowWhileIdle: true },
+        extra: { notetasks: true, kind: 'periodic' },
+      });
+    } else {
+      saveOccasionalNextScheduledAt(null);
+    }
+  } else {
+    saveOccasionalNextScheduledAt(null);
   }
 
   const pins = loadNotificationPins();
@@ -204,7 +240,7 @@ async function rescheduleAll(ctx: Params): Promise<void> {
         id: staleNativeNotificationId(userId),
         title: stale.title,
         body: stale.message,
-        channelId: 'notetasks_deadlines',
+        channelId: ANDROID_ALERTS_CHANNEL_ID,
         schedule: { at: new Date(Date.now() + 800), allowWhileIdle: true },
         extra: { notetasks: true, kind: 'stale' },
       });
@@ -334,6 +370,7 @@ export function useAndroidLocalNotifications(params: Params): void {
     params.androidNotif.masterEnabled,
     params.androidNotif.digestEnabled,
     params.androidNotif.digestTime,
+    params.androidNotif.periodicDigestEnabled,
     params.pinsRevision,
   ]);
 

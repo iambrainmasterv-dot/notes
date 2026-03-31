@@ -11,6 +11,8 @@ export interface Note {
   createdAt: string;
   /** Full datetime "YYYY-MM-DDTHH:mm" for regular, time-only "HH:mm" for daily */
   deadline?: string;
+  /** Android reminder N minutes before deadline; omit = 10; 0 = only at due time */
+  reminderMinutesBefore?: number;
   parentId?: string;
   /** Parent item type; omitted + parentId on legacy rows means parent is a note */
   parentType?: ParentType;
@@ -32,6 +34,8 @@ export interface Task {
   completedAt?: string;
   createdAt: string;
   deadline?: string;
+  /** Android reminder N minutes before deadline; omit = 10; 0 = only at due time */
+  reminderMinutesBefore?: number;
   parentId?: string;
   parentType?: ParentType;
   target: number;

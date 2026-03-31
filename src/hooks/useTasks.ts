@@ -4,6 +4,7 @@ import type { Task } from '../types';
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthProvider';
 import { storage } from '../storage';
+import { playAppSound } from '../audio/appSounds';
 
 function toApi(t: Task) {
   return {
@@ -21,6 +22,7 @@ function toApi(t: Task) {
     daily: t.daily ?? false,
     source_schedule_template_id: t.sourceScheduleTemplateId ?? null,
     source_occurrence_date: t.sourceOccurrenceDate ?? null,
+    reminder_minutes_before: t.reminderMinutesBefore ?? null,
   };
 }
 
@@ -41,6 +43,10 @@ export function taskFromApiRow(row: Record<string, unknown>): Task {
     daily: row.daily as boolean,
     sourceScheduleTemplateId: (row.source_schedule_template_id as string) || undefined,
     sourceOccurrenceDate: (row.source_occurrence_date as string) || undefined,
+    reminderMinutesBefore:
+      row.reminder_minutes_before != null && row.reminder_minutes_before !== ''
+        ? Number(row.reminder_minutes_before)
+        : undefined,
   };
 }
 
@@ -87,6 +93,7 @@ export function useTasks() {
         progress: 0,
         createdAt: new Date().toISOString(),
       };
+      playAppSound('createAction');
       setTasks((prev) => [...prev, task]);
       api.createTask(toApi(task)).catch(() => {});
     },
@@ -101,7 +108,12 @@ export function useTasks() {
     if (patch.description !== undefined) dbPatch.description = patch.description;
     if (patch.completed !== undefined) dbPatch.completed = patch.completed;
     if (patch.completedAt !== undefined) dbPatch.completed_at = patch.completedAt ?? null;
-    if (patch.deadline !== undefined) dbPatch.deadline = patch.deadline ?? null;
+    if ('deadline' in patch) {
+      dbPatch.deadline = patch.deadline ?? null;
+    }
+    if ('reminderMinutesBefore' in patch || ('deadline' in patch && !patch.deadline)) {
+      dbPatch.reminder_minutes_before = patch.deadline ? (patch.reminderMinutesBefore ?? null) : null;
+    }
     if (patch.target !== undefined) dbPatch.target = patch.target;
     if (patch.progress !== undefined) dbPatch.progress = patch.progress;
     if (patch.daily !== undefined) dbPatch.daily = patch.daily;

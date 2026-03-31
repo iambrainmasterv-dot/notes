@@ -50,6 +50,7 @@ export function TasksPage({
   const [description, setDescription] = useState('');
   const [target, setTarget] = useState(10);
   const [deadline, setDeadline] = useState<string | undefined>();
+  const [reminderMin, setReminderMin] = useState(10);
   const [parentVal, setParentVal] = useState('');
 
   const [tableDeleteId, setTableDeleteId] = useState<string | null>(null);
@@ -113,7 +114,7 @@ export function TasksPage({
   );
 
   const resetForm = () => {
-    setTitle(''); setDescription(''); setTarget(10); setDeadline(undefined); setParentVal('');
+    setTitle(''); setDescription(''); setTarget(10); setDeadline(undefined); setReminderMin(10); setParentVal('');
   };
 
   const handleSubmit = () => {
@@ -124,6 +125,7 @@ export function TasksPage({
       description: description.trim(),
       target,
       deadline,
+      reminderMinutesBefore: deadline ? reminderMin : undefined,
       parentId: parsed?.id,
       parentType: parsed?.type,
     });
@@ -339,7 +341,12 @@ export function TasksPage({
           <label>Target amount</label>
           <input className="input" type="number" min={1} value={target} onChange={(e) => setTarget(Number(e.target.value))} />
         </div>
-        <DeadlinePicker value={deadline} onChange={setDeadline} />
+        <DeadlinePicker
+          value={deadline}
+          onChange={setDeadline}
+          reminderMinutesBefore={deadline ? reminderMin : undefined}
+          onReminderMinutesChange={setReminderMin}
+        />
         <div className="form-group">
           <label>Parent</label>
           <select className="input select" value={parentVal} onChange={(e) => setParentVal(e.target.value)}>

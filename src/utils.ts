@@ -8,13 +8,45 @@ const TIME_ONLY_RE = /^\d{2}:\d{2}$/;
  * Handles ISO strings, local "YYYY-MM-DDTHH:mm", and time-only "HH:mm" (resolved to today).
  */
 export function parseDeadline(deadline: string): number {
+  return parseDeadlineAt(deadline, Date.now());
+}
+
+/** Resolve time-only "HH:mm" against the local calendar day of `referenceMs`. */
+export function parseDeadlineAt(deadline: string, referenceMs: number): number {
   if (TIME_ONLY_RE.test(deadline)) {
-    const today = new Date();
+    const d = new Date(referenceMs);
     const [h, m] = deadline.split(':').map(Number);
-    today.setHours(h, m, 0, 0);
-    return today.getTime();
+    d.setHours(h, m, 0, 0);
+    return d.getTime();
   }
   return new Date(deadline).getTime();
+}
+
+function localYmd(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** App-calendar instant containing `atMs` (same boundary logic as `appCalendarDate`). */
+export function appCalendarDateForInstant(resetTime: string, atMs: number): Date {
+  const instant = new Date(atMs);
+  const [h, m] = (resetTime || '00:00').split(':').map(Number);
+  const resetThatDay = new Date(instant);
+  resetThatDay.setHours(h, m, 0, 0);
+  if (atMs < resetThatDay.getTime()) {
+    return new Date(atMs - 86400000);
+  }
+  return instant;
+}
+
+export function appCalendarDateStrForInstant(resetTime: string, atMs: number): string {
+  return localYmd(appCalendarDateForInstant(resetTime, atMs));
+}
+
+export function appCalendarTomorrowStrForInstant(resetTime: string, atMs: number): string {
+  const d = appCalendarDateForInstant(resetTime, atMs);
+  d.setDate(d.getDate() + 1);
+  return localYmd(d);
 }
 
 export function isTimeOnly(deadline?: string): boolean {
@@ -25,7 +57,7 @@ export function isTimeOnly(deadline?: string): boolean {
  * Returns a structured state object for a deadline.
  */
 export function getDeadlineState(deadline: string, now: number): DeadlineState {
-  const diff = parseDeadline(deadline) - now;
+  const diff = parseDeadlineAt(deadline, now) - now;
 
   if (diff <= 0) {
     return { label: 'Expired', expired: true, severity: 'expired' };
@@ -59,7 +91,8 @@ export function getDeadlineState(deadline: string, now: number): DeadlineState {
 
 export function isExpired(deadline?: string, now?: number): boolean {
   if (!deadline) return false;
-  return parseDeadline(deadline) < (now ?? Date.now());
+  const t = now ?? Date.now();
+  return parseDeadlineAt(deadline, t) < t;
 }
 
 export function nextCanvasPosition(existingCount: number): { x: number; y: number } {
