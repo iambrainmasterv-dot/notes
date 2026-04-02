@@ -989,6 +989,8 @@ body {
 .card-desc {
   font-size: 0.82rem; color: var(--text-secondary);
   margin-bottom: 8px; line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .card-actions {
@@ -1313,7 +1315,8 @@ body {
 .completed-desc {
   font-size: 0.78rem; color: var(--text-muted);
   margin-top: 2px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .completed-actions {
@@ -1352,9 +1355,11 @@ body {
 
 .td-title { font-weight: 500; }
 .td-desc {
-  max-width: 280px; white-space: nowrap;
-  overflow: hidden; text-overflow: ellipsis;
+  max-width: 280px;
+  white-space: pre-wrap;
+  word-break: break-word;
   color: var(--text-secondary);
+  vertical-align: top;
 }
 .td-actions { display: flex; gap: 4px; }
 

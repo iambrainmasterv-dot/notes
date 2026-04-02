@@ -623,7 +623,12 @@ export function SchedulePage({
                 </div>
               </div>
               {tpl.description && expandedTpl === tpl.id && (
-                <p className="text-muted" style={{ fontSize: '0.82rem', padding: '0 12px 4px', margin: 0 }}>{tpl.description}</p>
+                <p
+                  className="text-muted"
+                  style={{ fontSize: '0.82rem', padding: '0 12px 4px', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+                >
+                  {tpl.description}
+                </p>
               )}
               {expandedTpl === tpl.id && (
                 <div className="preset-card-body">
