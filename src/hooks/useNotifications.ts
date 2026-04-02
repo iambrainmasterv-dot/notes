@@ -7,6 +7,11 @@ import {
   staleCompletedPanelCandidate,
   type StaleCompletedInput,
 } from '../notifications/rules';
+import {
+  addDismissedToastDedupeKey,
+  getDismissedToastDedupeKeys,
+  pruneDismissedToastDedupeKeys,
+} from '../notifications/toastDismissStorage';
 
 export interface ToastItem {
   id: string;
@@ -19,7 +24,8 @@ export interface ToastItem {
 export type { StaleCompletedInput };
 
 /**
- * Scans active notes/tasks for upcoming deadlines; adds deduped panel entries and one-shot toasts.
+ * Scans active notes/tasks for upcoming deadlines; adds deduped panel entries and toasts.
+ * Dismissed or read toasts stay hidden across sessions until the underlying item/deadline changes or expires.
  */
 export function useNotifications(
   notes: Parameters<typeof scanDeadlinePanelCandidates>[0],
@@ -32,8 +38,13 @@ export function useNotifications(
   const fired = useRef<Set<string>>(new Set());
 
   useEffect(() => {
+    const staleOn = staleCompletedPanelCandidate(staleCompleted, now) != null;
+    pruneDismissedToastDedupeKeys(notes, tasks, now, staleOn);
+    const dismissed = getDismissedToastDedupeKeys();
+
     const candidates = scanDeadlinePanelCandidates(notes, tasks, now);
     for (const c of candidates) {
+      if (dismissed.has(c.dedupeKey)) continue;
       if (fired.current.has(c.dedupeKey)) continue;
       fired.current.add(c.dedupeKey);
 
@@ -61,20 +72,19 @@ export function useNotifications(
         },
       ]);
     }
-  }, [notes, tasks, now]);
 
-  useEffect(() => {
-    const c = staleCompletedPanelCandidate(staleCompleted, now);
-    if (!c) return;
-    const dedupeKey = c.dedupeKey;
+    const sc = staleCompletedPanelCandidate(staleCompleted, now);
+    if (!sc) return;
+    const dedupeKey = sc.dedupeKey;
+    if (dismissed.has(dedupeKey)) return;
     if (fired.current.has(dedupeKey)) return;
     fired.current.add(dedupeKey);
 
     const n: AppNotification = {
       id: uuid(),
-      level: c.level,
-      title: c.title,
-      message: c.message,
+      level: sc.level,
+      title: sc.title,
+      message: sc.message,
       createdAt: Date.now(),
       read: false,
       dedupeKey,
@@ -99,15 +109,33 @@ export function useNotifications(
   }, [staleCompleted?.completedCount]);
 
   const dismissToast = useCallback((id: string) => {
+    setNotifications((prev) =>
+      prev.map((n) => {
+        if (n.id !== id) return n;
+        addDismissedToastDedupeKey(n.dedupeKey);
+        return { ...n, read: true };
+      }),
+    );
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
   const markRead = useCallback((id: string) => {
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    setNotifications((prev) =>
+      prev.map((n) => {
+        if (n.id !== id) return n;
+        addDismissedToastDedupeKey(n.dedupeKey);
+        return { ...n, read: true };
+      }),
+    );
   }, []);
 
   const markAllRead = useCallback(() => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    setNotifications((prev) => {
+      for (const n of prev) {
+        if (!n.read) addDismissedToastDedupeKey(n.dedupeKey);
+      }
+      return prev.map((n) => ({ ...n, read: true }));
+    });
   }, []);
 
   const unreadCount = notifications.filter((n) => !n.read).length;

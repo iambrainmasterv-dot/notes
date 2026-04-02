@@ -140,7 +140,7 @@ export interface AppNotification {
   message: string;
   createdAt: number;
   read: boolean;
-  /** Dedup key e.g. task:id:1h */
+  /** Dedup key e.g. dm30:task:uuid:encodedDeadline or stale-completed-tab */
   dedupeKey: string;
   itemType?: 'note' | 'task';
   itemId?: string;

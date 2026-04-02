@@ -1726,12 +1726,41 @@ body {
   }
 
   .toast-stack {
-    left: 12px;
-    right: 12px;
+    top: calc(6px + var(--sat));
+    left: 8px;
+    right: 8px;
+    gap: 6px;
     align-items: stretch;
   }
 
-  .toast { max-width: none; }
+  .toast {
+    max-width: none;
+    padding: 8px 10px;
+    gap: 8px;
+    border-radius: var(--radius-sm);
+  }
+
+  .toast-title {
+    font-size: 0.78rem;
+    margin-bottom: 1px;
+  }
+
+  .toast-msg {
+    font-size: 0.72rem;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .toast-close {
+    padding: 2px;
+    min-width: 28px;
+    min-height: 28px;
+    font-size: 1.1rem;
+    line-height: 1;
+  }
 }
 
 /* =============================================

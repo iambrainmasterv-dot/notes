@@ -1,6 +1,7 @@
 import type { Note, Task, NotificationLevel } from '../types';
 import { parseDeadline } from '../utils';
 import { formatDeadlineForNotification } from './deadlineFormat';
+import { deadlineToastDedupeKey } from './toastDismissStorage';
 
 export const NOTIF_HOUR_MS = 60 * 60 * 1000;
 export const NOTIF_DAY_MS = 24 * NOTIF_HOUR_MS;
@@ -32,6 +33,9 @@ export interface DeadlinePanelCandidate {
   itemId: string;
 }
 
+const DEADLINE_WARN_30M_MS = 30 * NOTIF_MINUTE_MS;
+const DEADLINE_WARN_10M_MS = 10 * NOTIF_MINUTE_MS;
+
 export function scanDeadlinePanelCandidates(notes: Note[], tasks: Task[], now: number): DeadlinePanelCandidate[] {
   const items: (Note | Task)[] = [
     ...notes.filter((n) => !n.completed && n.deadline),
@@ -48,21 +52,22 @@ export function scanDeadlinePanelCandidates(notes: Note[], tasks: Task[], now: n
     }
     const ms = t - now;
     if (ms <= 0) continue;
-    if (ms <= NOTIF_HOUR_MS) {
+    const label = item.type === 'task' ? 'Task' : 'Note';
+    if (ms <= DEADLINE_WARN_10M_MS) {
       out.push({
-        dedupeKey: `${item.type}:${item.id}:1h`,
+        dedupeKey: deadlineToastDedupeKey('10m', item.type, item.id, deadline),
         level: 'danger',
-        title: `${item.type === 'task' ? 'Task' : 'Note'} expiring very soon`,
-        message: `"${item.title}" is due within about an hour.`,
+        title: `${label} due very soon`,
+        message: `"${item.title}" has about 10 minutes left.`,
         itemType: item.type,
         itemId: item.id,
       });
-    } else if (ms <= NOTIF_DAY_MS) {
+    } else if (ms <= DEADLINE_WARN_30M_MS) {
       out.push({
-        dedupeKey: `${item.type}:${item.id}:24h`,
+        dedupeKey: deadlineToastDedupeKey('30m', item.type, item.id, deadline),
         level: 'warning',
-        title: `${item.type === 'task' ? 'Task' : 'Note'} expiring soon`,
-        message: `"${item.title}" is due within 24 hours.`,
+        title: `${label} due soon`,
+        message: `"${item.title}" has about 30 minutes left.`,
         itemType: item.type,
         itemId: item.id,
       });
