@@ -45,6 +45,60 @@ function ollamaModel() {
   return (process.env.OLLAMA_MODEL || 'llama3.2').trim() || 'llama3.2';
 }
 
+const CHAT_MODE_SYSTEM = `You are a friendly, knowledgeable AI assistant. You only chat: answer questions, explain ideas, help with writing, or casual conversation. You do **not** have access to the user's NoteTasks app, notes, tasks, calendar, or any tools — never claim to read, list, or change their app data. If they ask you to create or edit notes or tasks, briefly say that you can help with that when they switch Jarvis to **Edit** mode in the Jarvis panel.`;
+
+/**
+ * Ollama /api/chat without tools (general LLM turn).
+ * @param {string} base
+ * @param {string} model
+ * @param {{ role: string; content: string }[]} messages
+ */
+async function simpleOllamaChat(base, model, messages) {
+  const url = `${base}/api/chat`;
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...ollamaFetchExtraHeaders(base),
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        stream: false,
+      }),
+    });
+  } catch (e) {
+    const code = /** @type {NodeJS.ErrnoException} */ (e)?.cause?.code || /** @type {NodeJS.ErrnoException} */ (e)?.code;
+    if (code === 'ECONNREFUSED' || code === 'ENOTFOUND') {
+      const err = new Error('Cannot reach Ollama');
+      err.code = 'OLLAMA_UNAVAILABLE';
+      throw err;
+    }
+    const err = new Error(e instanceof Error ? e.message : 'Ollama request failed');
+    err.code = 'OLLAMA_REQUEST_FAILED';
+    throw err;
+  }
+
+  const text = await res.text();
+  if (!res.ok) {
+    const err = new Error(text.slice(0, 500) || `Ollama HTTP ${res.status}`);
+    err.status = res.status;
+    if (res.status === 404) err.code = 'OLLAMA_NOT_FOUND';
+    else err.code = 'OLLAMA_HTTP_ERROR';
+    throw err;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    const err = new Error('Invalid JSON from Ollama');
+    err.code = 'OLLAMA_BAD_RESPONSE';
+    throw err;
+  }
+}
+
 function sanitizeClientMessages(messages) {
   if (!Array.isArray(messages)) return [];
   const out = [];
@@ -188,10 +242,10 @@ function buildSystemPrompt({ clientIsoTime, tzOffsetMinutes, mutationsEnabled, f
     '## Tools — general rules',
     '- Never invent ids — call **list_notes**, **list_tasks**, or **list_schedule_templates** before update/delete/nested create unless you already have the id.',
     '- **daily:true** is not the same as template **Daily**; **every Friday / weekdays only** belongs in **templates** (`weekdays`), not a plain note with "every Friday" in the title.',
-    '- Unclear mutating intent may be held until the user taps **Accept** in Jarvis; list the plan in your reply. Obvious requests can run when **Allow edits** is on.',
+    '- Unclear mutating intent may be held until the user taps **Accept** in Jarvis; list the plan in your reply. Obvious requests can run in **Edit** mode.',
     '- Never claim success without a tool result. **undo_agent_action** / **list_agent_undo** revert recent Jarvis changes.',
     '- Do not paste raw tool JSON in the user-visible reply.',
-    '- If mutations are disabled: **Settings** (sidebar) → **Jarvis** section → turn on **Allow edits**.',
+    '- If the user is in **Chat** mode: they must switch Jarvis to **Edit** mode to change app data.',
     `Mutations for this user are currently **${mutationsEnabled ? 'ENABLED' : 'DISABLED'}**.`,
     timeLine,
     tzLine,
@@ -306,7 +360,7 @@ async function ollamaChat(base, model, messages, tools) {
  * @param {Array<{ role: string, content: string }>} opts.messages
  * @param {string} [opts.clientIsoTime]
  * @param {number} [opts.tzOffsetMinutes]
- * @param {{ ai_agent_mutations_enabled?: boolean }} [opts.settingsRow]
+ * @param {'chat' | 'edit'} [opts.jarvisMode] — **edit** = tools + app access; **chat** = plain LLM only.
  * @param {string} opts.ollamaBase - Ollama origin from OLLAMA_BASE_URL (server resolves before calling)
  * @param {{ mode?: string; previousPending?: unknown[] }} [opts.followUp]
  */
@@ -322,11 +376,29 @@ export async function runAgentChat(opts) {
   }
   const model = ollamaModel();
 
-  const { userId, clientIsoTime, tzOffsetMinutes, settingsRow, followUp } = opts;
+  const jarvisMode = String(opts.jarvisMode || 'edit').toLowerCase() === 'chat' ? 'chat' : 'edit';
+  const { userId, clientIsoTime, tzOffsetMinutes, followUp } = opts;
   const history = sanitizeClientMessages(opts.messages);
   const lastUser = [...history].reverse().find((m) => m.role === 'user');
-  const mutationsEnabled = settingsRow?.ai_agent_mutations_enabled !== false;
+  const mutationsEnabled = jarvisMode === 'edit';
   const clearMutationIntent = isClearMutationIntent(lastUser?.content || '');
+
+  if (jarvisMode === 'chat') {
+    const ollamaMessages = [{ role: 'system', content: CHAT_MODE_SYSTEM }, ...history.map((m) => ({ role: m.role, content: m.content }))];
+    const data = await simpleOllamaChat(base, model, ollamaMessages);
+    const msg = data?.message;
+    const raw = msg && typeof msg === 'object' && typeof msg.content === 'string' ? msg.content.trim() : '';
+    const message = polishAssistantMessageForUser(raw) || raw || '…';
+    return {
+      message,
+      pendingConfirmations: [],
+      pendingMutations: [],
+      workContext: null,
+      dirtyNotes: false,
+      dirtyTasks: false,
+      dirtyTemplates: false,
+    };
+  }
 
   const pendingConfirmations = [];
   const pendingMutations = [];

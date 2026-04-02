@@ -25,6 +25,7 @@ import { AssistantPage } from './pages/AssistantPage';
 import { AssistantDock } from './components/AssistantDock';
 import { ThemePanel } from './components/ThemePanel';
 import { useAssistantChat } from './hooks/useAssistantChat';
+import { loadJarvisMode, saveJarvisMode, type JarvisMode } from './jarvis/jarvisModeStorage';
 import { useGlobalUiTapSound } from './hooks/useGlobalUiTapSound';
 import { playAppSound } from './audio/appSounds';
 import { NotificationBell } from './components/NotificationBell';
@@ -527,8 +528,14 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
     setNotifOpen(false);
   }, [setPage]);
 
+  const [jarvisMode, setJarvisMode] = useState<JarvisMode>(() => loadJarvisMode());
+  const setJarvisModePersist = useCallback((mode: JarvisMode) => {
+    setJarvisMode(mode);
+    saveJarvisMode(mode);
+  }, []);
+
   const assistantChat = useAssistantChat({
-    mutationsEnabled: settings.aiAgentMutationsEnabled,
+    jarvisMode,
     onWorkContext: handleAssistantWorkContext,
     onDataChanged: refetchWorkspace,
   });
@@ -547,7 +554,8 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
   }, [assistantChat.loading, assistantChat.messages]);
 
   const assistantPanelProps = {
-    mutationsEnabled: settings.aiAgentMutationsEnabled,
+    jarvisMode,
+    onJarvisModeChange: setJarvisModePersist,
     messages: assistantChat.messages,
     loading: assistantChat.loading,
     error: assistantChat.error,

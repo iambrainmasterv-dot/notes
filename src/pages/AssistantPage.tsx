@@ -11,9 +11,8 @@ export function AssistantPage(props: Props) {
       <header className="page-header">
         <h1 className="page-title">Jarvis</h1>
         <p className="page-subtitle" style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-          Session-only chat. Turn on <strong>Allow edits</strong> under <strong>Settings</strong> → <strong>Jarvis</strong> so
-          I can change your data. Clear requests may apply right away; vague ones show <strong>Accept</strong>,{' '}
-          <strong>Deny</strong>, and <strong>Redo</strong>. Ask me to undo if something went wrong.
+          Choose <strong>Chat</strong> for open conversation, or <strong>Edit</strong> so I can read and change your notes,
+          tasks, and schedule. Session-only; use <strong>Edit</strong> for data changes.
         </p>
       </header>
       <AssistantPanel {...props} compact={false} />

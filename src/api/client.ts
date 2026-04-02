@@ -184,6 +184,7 @@ export const api = {
     messages: { role: 'user' | 'assistant'; content: string }[];
     clientIsoTime?: string;
     tzOffsetMinutes?: number;
+    jarvisMode?: 'chat' | 'edit';
     followUp?: { mode: string; previousPending?: unknown[] };
   }) =>
     request<{
@@ -198,7 +199,7 @@ export const api = {
 
   aiExecuteActions: (
     actions: { tool: string; arguments: Record<string, unknown> }[],
-    opts?: { contextUserMessage?: string },
+    opts?: { contextUserMessage?: string; jarvisMode?: 'chat' | 'edit' },
   ) =>
     request<{ results: { ok: boolean; tool: string; error?: string; item?: unknown; deleted?: unknown }[] }>(
       '/ai/execute-actions',
@@ -207,6 +208,7 @@ export const api = {
         body: JSON.stringify({
           actions,
           contextUserMessage: opts?.contextUserMessage,
+          jarvisMode: opts?.jarvisMode ?? 'edit',
         }),
       },
     ),

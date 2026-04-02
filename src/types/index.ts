@@ -75,8 +75,6 @@ export interface ThemeSettings {
   uiScale: UIScale;
   fontScale: FontScale;
   dailyResetTime: string;
-  /** When false, Jarvis cannot create, update, or delete items (chat only). */
-  aiAgentMutationsEnabled: boolean;
 }
 
 export type DeadlineSeverity = 'ok' | 'soon' | 'urgent' | 'expired';

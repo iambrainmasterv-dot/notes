@@ -1,8 +1,10 @@
 import { useRef, useEffect } from 'react';
 import type { AssistantChatMessage } from '../hooks/useAssistantChat';
+import type { JarvisMode } from '../jarvis/jarvisModeStorage';
 
 export interface AssistantPanelProps {
-  mutationsEnabled: boolean;
+  jarvisMode: JarvisMode;
+  onJarvisModeChange: (mode: JarvisMode) => void;
   messages: AssistantChatMessage[];
   loading: boolean;
   error: string | null;
@@ -23,7 +25,8 @@ export interface AssistantPanelProps {
 }
 
 export function AssistantPanel({
-  mutationsEnabled,
+  jarvisMode,
+  onJarvisModeChange,
   messages,
   loading,
   error,
@@ -42,6 +45,7 @@ export function AssistantPanel({
 }: AssistantPanelProps) {
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const mutationsEnabled = jarvisMode === 'edit';
 
   const ollamaReady = !guestMode && ollamaAvailable === true;
   const showSetupGuide = !guestMode && ollamaAvailable === false;
@@ -66,12 +70,6 @@ export function AssistantPanel({
       {guestMode && (
         <p className="assistant-banner" role="status">
           Guest mode: Jarvis uses your NoteTasks server. Sign in to chat; your notes and tasks still work offline on this device.
-        </p>
-      )}
-
-      {!mutationsEnabled && ollamaReady && (
-        <p className="assistant-banner">
-          Jarvis cannot change your notes or tasks while <strong>Allow edits</strong> is off in Settings (Jarvis section).
         </p>
       )}
 
@@ -140,13 +138,43 @@ export function AssistantPanel({
 
       {ollamaReady && (
         <>
+          <div className="assistant-mode-row" role="group" aria-label="Jarvis mode">
+            <span className="assistant-mode-label">Mode</span>
+            <div className="theme-modes assistant-mode-toggle">
+              <button
+                type="button"
+                className={`theme-mode-btn ${jarvisMode === 'chat' ? 'active' : ''}`}
+                onClick={() => onJarvisModeChange('chat')}
+              >
+                <span>💬</span>
+                <span>Chat</span>
+              </button>
+              <button
+                type="button"
+                className={`theme-mode-btn ${jarvisMode === 'edit' ? 'active' : ''}`}
+                onClick={() => onJarvisModeChange('edit')}
+              >
+                <span>✎</span>
+                <span>Edit</span>
+              </button>
+            </div>
+          </div>
+
           <div className="assistant-messages">
             {messages.length === 0 && !loading && (
               <p className="assistant-empty">
-                Chat about anything — Jarvis only changes your notes, tasks, or schedule when you clearly ask, or when you
-                tap <strong>Accept</strong> on a proposed plan. With <strong>Allow edits</strong> on, clear requests can
-                apply right away; ambiguous ones get a review step first. Jarvis can <strong>undo</strong> recent changes on
-                request.
+                {jarvisMode === 'chat' ? (
+                  <>
+                    <strong>Chat</strong> — general conversation only. Jarvis does not read or change your notes, tasks, or
+                    schedule.
+                  </>
+                ) : (
+                  <>
+                    <strong>Edit</strong> — Jarvis can use your NoteTasks data. Clear requests may apply right away;
+                    ambiguous ones show <strong>Accept</strong>, <strong>Deny</strong>, and <strong>Redo</strong>. Ask to{' '}
+                    <strong>undo</strong> if something went wrong.
+                  </>
+                )}
               </p>
             )}
             {messages.map((m, i) => (

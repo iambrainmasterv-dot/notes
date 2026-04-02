@@ -30,8 +30,8 @@ export const APP_CAPABILITIES_MARKDOWN = `
 - **Completed** — Finished notes/tasks. Search field placeholder **Search completed...** Rows have **Recover** (↩) to move back to active; you can also select rows and use bulk actions. Table/grid views show the same.
 
 ## Settings (gear icon in sidebar)
-- Opens the settings panel. Sections include appearance and **Jarvis**.
-- Under **Jarvis**: description *Allow Jarvis to create, update, or delete notes and tasks…* — the toggle label is **Allow edits**. When off, Jarvis chat works but mutating tools fail until the user turns **Allow edits** on.
+- Opens the settings panel. Sections include appearance and a short **Jarvis** note (Ollama / server URL).
+- **Jarvis mode** is chosen **in the Jarvis tab** (or Side Jarvis), not in Settings: **Chat** = general conversation only (no app tools). **Edit** = Jarvis can list and change notes, tasks, and schedule templates.
 
 ## Notes vs tasks (tools use snake_case)
 - **Note**: \`title\`, \`description\`, \`completed\`, optional \`deadline\`, \`parent_id\` + \`parent_type\` (\`note\` | \`task\`), \`daily\`, \`position_x\` / \`position_y\`, \`collapsed\`.
@@ -63,12 +63,12 @@ export const APP_CAPABILITIES_MARKDOWN = `
 - **list_agent_undo** / **undo_agent_action**: recent mutations (including deletes) can be **reverted** by you.
 
 ## Mutations (Jarvis)
-- **Allow AI to edit data** off → mutating tools fail; say so and suggest Settings → Jarvis.
-- When the user’s intent is **not** obvious, mutating tool calls are **held** until they tap **Accept** in the Jarvis panel (they may **Deny** or **Redo**). Clear, explicit create/update/delete requests can apply **immediately** when allowed.
+- **Chat** mode → no tools; you cannot read or change app data. Tell the user to switch to **Edit** mode in the Jarvis panel if they want data changes.
+- **Edit** mode → tools work. When the user’s intent is **not** obvious, mutating tool calls are **held** until they tap **Accept** (or **Deny** / **Redo**). Clear, explicit create/update/delete requests can apply **immediately** when appropriate.
 - **Undo**: \`list_agent_undo\` then \`undo_agent_action\` (\`count\` 1–5). Stack is per-user on the server (cleared on server restart).
 
 ## Other product features
-- **Settings**: theme, density, font size, **daily reset time**, import, tutorial, **Allow AI to edit data**. Ollama: server \`OLLAMA_BASE_URL\`.
+- **Settings**: theme, density, font size, **daily reset time**, import, tutorial. Ollama: server \`OLLAMA_BASE_URL\`.
 - **Notifications**: bell for deadlines/reminders.
 - **Presets** on Schedule exist in the UI only (not primary Jarvis tools).
 

@@ -94,7 +94,7 @@ const STEPS: TutorialStep[] = [
     skipTabKey: 'settings',
     page: 'settings',
     title: 'Settings',
-    body: 'Theme, density, font size, daily reset time, local import, app version, Jarvis (Allow edits, undo via chat), and re-run this tutorial anytime.',
+    body: 'Theme, density, font size, daily reset time, local import, app version, Jarvis (Chat vs Edit mode in the Jarvis tab), and re-run this tutorial anytime.',
     interactive: true,
     highlightTargets: ['nav-settings'],
   },

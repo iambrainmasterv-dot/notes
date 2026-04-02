@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { pool } from '../db.js';
 import { runAgentChat } from '../services/aiAgent.js';
 import { executeConfirmedActions } from '../services/agentExecutor.js';
 import { ollamaFetchExtraHeaders } from '../services/ollamaTunnelHeaders.js';
@@ -137,15 +136,6 @@ router.get('/availability', async (req, res) => {
   }
 });
 
-async function loadMutationFlag(userId) {
-  const { rows } = await pool.query(
-    'SELECT ai_agent_mutations_enabled FROM user_settings WHERE user_id = $1',
-    [userId],
-  );
-  if (rows.length === 0) return { ai_agent_mutations_enabled: true };
-  return rows[0];
-}
-
 router.post('/format-item-copy', async (req, res) => {
   try {
     const ollamaBase = getOllamaBaseFromEnv();
@@ -206,7 +196,7 @@ router.post('/chat', async (req, res) => {
         error: 'Jarvis is not configured. Set OLLAMA_BASE_URL in the server environment (e.g. your Ollama URL or ngrok https origin), then restart the API.',
       });
     }
-    const settingsRow = await loadMutationFlag(req.userId);
+    const jarvisMode = String(req.body?.jarvisMode || 'edit').toLowerCase() === 'chat' ? 'chat' : 'edit';
     const {
       message,
       pendingConfirmations,
@@ -220,7 +210,7 @@ router.post('/chat', async (req, res) => {
       messages: req.body?.messages,
       clientIsoTime: req.body?.clientIsoTime,
       tzOffsetMinutes: req.body?.tzOffsetMinutes,
-      settingsRow,
+      jarvisMode,
       ollamaBase,
       followUp: req.body?.followUp,
     });
@@ -253,9 +243,8 @@ router.post('/chat', async (req, res) => {
 
 router.post('/execute-actions', async (req, res) => {
   try {
-    const settingsRow = await loadMutationFlag(req.userId);
-    if (settingsRow.ai_agent_mutations_enabled === false) {
-      return res.status(403).json({ error: 'AI mutations are disabled in settings.' });
+    if (String(req.body?.jarvisMode || '').toLowerCase() !== 'edit') {
+      return res.status(403).json({ error: 'Actions only apply in Jarvis Edit mode.' });
     }
     const actions = req.body?.actions;
     if (!Array.isArray(actions) || actions.length === 0) {

@@ -343,29 +343,8 @@ export function ThemePanel({
       <div className="theme-section">
         <span className="theme-label">Jarvis</span>
         <p className="theme-help">
-          Allow Jarvis to create, update, or delete notes and tasks. Chat still works when this is off.
-        </p>
-        <div className="theme-modes">
-          <button
-            type="button"
-            className={`theme-mode-btn ${settings.aiAgentMutationsEnabled ? 'active' : ''}`}
-            onClick={() => onUpdate({ aiAgentMutationsEnabled: true })}
-          >
-            <span>✓</span>
-            <span>Allow edits</span>
-          </button>
-          <button
-            type="button"
-            className={`theme-mode-btn ${!settings.aiAgentMutationsEnabled ? 'active' : ''}`}
-            onClick={() => onUpdate({ aiAgentMutationsEnabled: false })}
-          >
-            <span>○</span>
-            <span>Chat only</span>
-          </button>
-        </div>
-        <p className="theme-help" style={{ marginTop: 12 }}>
           Jarvis uses Ollama. The API reads <code>OLLAMA_BASE_URL</code> on the server (e.g. ngrok https origin on Railway).
-          New to Jarvis? Open the Jarvis tab for setup steps.
+          Use <strong>Chat</strong> or <strong>Edit</strong> mode in the Jarvis tab — Edit can change your notes and tasks.
         </p>
       </div>
 

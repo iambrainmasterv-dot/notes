@@ -17,7 +17,6 @@ function loadLocalSettings(): ThemeSettings {
         uiScale: p.uiScale ?? 'default',
         fontScale: p.fontScale ?? 'default',
         dailyResetTime: p.dailyResetTime ?? '00:00',
-        aiAgentMutationsEnabled: p.aiAgentMutationsEnabled !== false,
       };
     }
   } catch { /* ignore */ }
@@ -27,7 +26,6 @@ function loadLocalSettings(): ThemeSettings {
     uiScale: 'default',
     fontScale: 'default',
     dailyResetTime: '00:00',
-    aiAgentMutationsEnabled: true,
   };
 }
 
@@ -63,7 +61,6 @@ export function useUserSettings() {
           uiScale: (data.ui_scale as ThemeSettings['uiScale']) ?? 'default',
           fontScale: (data.font_scale as ThemeSettings['fontScale']) ?? 'default',
           dailyResetTime: (data.daily_reset_time as string) ?? '00:00',
-          aiAgentMutationsEnabled: data.ai_agent_mutations_enabled !== false,
         };
         setSettings(remote);
         const tag = (data.last_reset_tag as string) ?? null;
@@ -95,9 +92,6 @@ export function useUserSettings() {
         if (patch.uiScale !== undefined) dbPatch.ui_scale = patch.uiScale;
         if (patch.fontScale !== undefined) dbPatch.font_scale = patch.fontScale;
         if (patch.dailyResetTime !== undefined) dbPatch.daily_reset_time = patch.dailyResetTime;
-        if (patch.aiAgentMutationsEnabled !== undefined) {
-          dbPatch.ai_agent_mutations_enabled = patch.aiAgentMutationsEnabled;
-        }
         if (Object.keys(dbPatch).length > 0) api.updateSettings(dbPatch).catch(() => {});
 
         return next;

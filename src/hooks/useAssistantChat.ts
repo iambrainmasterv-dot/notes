@@ -42,7 +42,7 @@ function clearOpenProposals(msgs: AssistantChatMessage[]): AssistantChatMessage[
 }
 
 export function useAssistantChat(options: {
-  mutationsEnabled: boolean;
+  jarvisMode: 'chat' | 'edit';
   onWorkContext?: (ctx: AssistantWorkContext | null) => void;
   onDataChanged?: () => void;
 }) {
@@ -52,6 +52,7 @@ export function useAssistantChat(options: {
 
   const onWorkContextRef = useRef(options.onWorkContext);
   const onDataChangedRef = useRef(options.onDataChanged);
+  const jarvisModeRef = useRef(options.jarvisMode);
   const messagesRef = useRef<AssistantChatMessage[]>([]);
   const sendInFlightRef = useRef(false);
 
@@ -62,7 +63,8 @@ export function useAssistantChat(options: {
   useEffect(() => {
     onWorkContextRef.current = options.onWorkContext;
     onDataChangedRef.current = options.onDataChanged;
-  }, [options.onWorkContext, options.onDataChanged]);
+    jarvisModeRef.current = options.jarvisMode;
+  }, [options.onWorkContext, options.onDataChanged, options.jarvisMode]);
 
   const send = useCallback(async (text: string) => {
     const trimmed = text.trim();
@@ -81,6 +83,7 @@ export function useAssistantChat(options: {
         messages: toApiMessages(nextMessages),
         clientIsoTime: new Date().toISOString(),
         tzOffsetMinutes: new Date().getTimezoneOffset(),
+        jarvisMode: jarvisModeRef.current,
       });
       const pending = res.pendingMutations?.length ? res.pendingMutations : undefined;
       setMessages((prev) => [
@@ -115,7 +118,7 @@ export function useAssistantChat(options: {
     try {
       const res = await api.aiExecuteActions(
         target.pendingMutations.map((p) => ({ tool: p.tool, arguments: p.arguments })),
-        { contextUserMessage: target.contextUserMessageForActions || '' },
+        { contextUserMessage: target.contextUserMessageForActions || '', jarvisMode: 'edit' },
       );
       const allOk = res.results.length > 0 && res.results.every((r) => r.ok);
       const summaryLine = allOk
@@ -171,6 +174,7 @@ export function useAssistantChat(options: {
         messages: toApiMessages(cleared),
         clientIsoTime: new Date().toISOString(),
         tzOffsetMinutes: new Date().getTimezoneOffset(),
+        jarvisMode: 'edit',
         followUp: { mode: 'deny', previousPending: target.pendingMutations },
       });
       const pending = res.pendingMutations?.length ? res.pendingMutations : undefined;
@@ -222,6 +226,7 @@ export function useAssistantChat(options: {
         messages: toApiMessages(cleared),
         clientIsoTime: new Date().toISOString(),
         tzOffsetMinutes: new Date().getTimezoneOffset(),
+        jarvisMode: 'edit',
         followUp: { mode: 'redo', previousPending: target.pendingMutations },
       });
       const pending = res.pendingMutations?.length ? res.pendingMutations : undefined;

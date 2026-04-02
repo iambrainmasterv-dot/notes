@@ -356,6 +356,26 @@ body {
   padding-right: 2px;
 }
 
+.assistant-mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+}
+
+.assistant-mode-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.assistant-mode-toggle.theme-modes {
+  flex: 1;
+  min-width: min(100%, 220px);
+}
+
 .assistant-banner {
   margin: 0;
   padding: 10px 12px;
