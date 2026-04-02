@@ -15,6 +15,7 @@ import presetsRoutes from './routes/presets.js';
 import scheduleTemplatesRoutes from './routes/scheduleTemplates.js';
 import importRoutes from './routes/import.js';
 import aiRoutes from './routes/ai.js';
+import voidRoutes from './routes/void.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -28,6 +29,7 @@ app.use(cors());
 app.use(express.json({ limit: '5mb' }));
 
 app.use('/api/auth', authRoutes);
+app.use('/api/void', voidRoutes);
 
 app.use('/api/notes', authMiddleware, notesRoutes);
 app.use('/api/tasks', authMiddleware, tasksRoutes);

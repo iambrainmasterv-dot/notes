@@ -3,6 +3,13 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import type { ThemeMode, AccentColor, UIScale, FontScale, ThemeSettings } from '../types';
 import type { AndroidNotifUserSettings } from '../notifications/androidSettings';
 import { loadToastSoundEnabled, saveToastSoundEnabled } from '../audio/toastSoundSettings';
+import {
+  loadSoundMuted,
+  loadSoundVolumePercent,
+  saveSoundMuted,
+  saveSoundVolumePercent,
+} from '../audio/soundOutputSettings';
+import { applySoundOutputToAllCachedAudio } from '../audio/appSounds';
 import { APP_VERSION } from '../version';
 
 interface Props {
@@ -61,6 +68,8 @@ export function ThemePanel({
   onAndroidNotifChange,
 }: Props) {
   const [toastSounds, setToastSounds] = useState(loadToastSoundEnabled);
+  const [soundMuted, setSoundMuted] = useState(loadSoundMuted);
+  const [soundVolumePct, setSoundVolumePct] = useState(loadSoundVolumePercent);
 
   return (
     <div className="theme-panel">
@@ -190,6 +199,53 @@ export function ThemePanel({
             <span>Sound off</span>
           </button>
         </div>
+        <div
+          className="theme-modes"
+          style={{ marginTop: 12, opacity: toastSounds ? 1 : 0.45, pointerEvents: toastSounds ? 'auto' : 'none' }}
+        >
+          <button
+            type="button"
+            className={`theme-mode-btn ${!soundMuted ? 'active' : ''}`}
+            onClick={() => {
+              saveSoundMuted(false);
+              setSoundMuted(false);
+              applySoundOutputToAllCachedAudio();
+            }}
+          >
+            <span>✓</span>
+            <span>Unmuted</span>
+          </button>
+          <button
+            type="button"
+            className={`theme-mode-btn ${soundMuted ? 'active' : ''}`}
+            onClick={() => {
+              saveSoundMuted(true);
+              setSoundMuted(true);
+              applySoundOutputToAllCachedAudio();
+            }}
+          >
+            <span>○</span>
+            <span>Mute</span>
+          </button>
+        </div>
+        <label className="theme-label" style={{ display: 'block', marginTop: 12 }}>
+          Volume
+        </label>
+        <input
+          type="range"
+          className="input"
+          min={0}
+          max={100}
+          value={soundVolumePct}
+          disabled={!toastSounds}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            setSoundVolumePct(v);
+            saveSoundVolumePercent(v);
+            applySoundOutputToAllCachedAudio();
+          }}
+          style={{ width: '100%', maxWidth: 280, marginTop: 8, display: 'block' }}
+        />
       </div>
 
       {androidNotif && onAndroidNotifChange && (

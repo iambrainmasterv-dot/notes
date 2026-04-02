@@ -55,6 +55,14 @@ import {
 import { setAndroidDataSyncCallback } from './notifications/syncBridge';
 import { AndroidPinProvider } from './notifications/AndroidPinContext';
 import { AssistantJarvisReadyContext } from './context/AssistantJarvisReadyContext';
+import { VoidPage } from './pages/VoidPage';
+import { HiddenVoidTrigger } from './components/HiddenVoidTrigger';
+
+function isVoidPathname(): boolean {
+  if (typeof window === 'undefined') return false;
+  const p = window.location.pathname.replace(/\/+$/, '') || '/';
+  return p === '/void';
+}
 
 const tabs: { key: Page; label: string; icon: React.ReactNode }[] = [
   {
@@ -238,22 +246,52 @@ function AppNavSections({
 export default function App() {
   useGlobalUiTapSound();
   const { user, isGuest, loading, signOut } = useAuth();
+  const [, setPathRev] = useState(0);
+
+  useEffect(() => {
+    const bump = () => setPathRev((x) => x + 1);
+    window.addEventListener('popstate', bump);
+    window.addEventListener('notetasks-nav', bump);
+    return () => {
+      window.removeEventListener('popstate', bump);
+      window.removeEventListener('notetasks-nav', bump);
+    };
+  }, []);
+
+  if (isVoidPathname()) {
+    return <VoidPage />;
+  }
 
   if (loading) {
     return (
-      <div className="login-page">
-        <div className="login-card" style={{ textAlign: 'center' }}>
-          <div className="brand-mark">N</div>
-          <p style={{ marginTop: 12, color: 'var(--text-secondary)' }}>Loading…</p>
-          <p className="login-version" style={{ marginTop: 16 }}>v{APP_VERSION}</p>
+      <>
+        <div className="login-page">
+          <div className="login-card" style={{ textAlign: 'center' }}>
+            <div className="brand-mark">N</div>
+            <p style={{ marginTop: 12, color: 'var(--text-secondary)' }}>Loading…</p>
+            <p className="login-version" style={{ marginTop: 16 }}>v{APP_VERSION}</p>
+          </div>
         </div>
-      </div>
+        <HiddenVoidTrigger />
+      </>
     );
   }
 
-  if (!user && !isGuest) return <LoginPage />;
+  if (!user && !isGuest) {
+    return (
+      <>
+        <LoginPage />
+        <HiddenVoidTrigger />
+      </>
+    );
+  }
 
-  return <AuthenticatedApp signOut={signOut} />;
+  return (
+    <>
+      <AuthenticatedApp signOut={signOut} />
+      <HiddenVoidTrigger />
+    </>
+  );
 }
 
 function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {

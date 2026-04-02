@@ -2,6 +2,7 @@
  * UI sound map — add MP3s under public/sounds/ using the filenames below.
  */
 import { loadToastSoundEnabled } from './toastSoundSettings';
+import { loadSoundMuted, loadSoundVolume01 } from './soundOutputSettings';
 
 export type AppSoundId =
   | 'deadlineAlert'
@@ -24,6 +25,13 @@ export const APP_SOUND_FILES: Record<AppSoundId, string> = {
 };
 
 const audioCache = new Map<string, HTMLAudioElement>();
+
+export function applySoundOutputToAllCachedAudio(): void {
+  const v = loadSoundMuted() ? 0 : loadSoundVolume01();
+  for (const el of audioCache.values()) {
+    el.volume = v;
+  }
+}
 
 let lastNonUiSoundMs = 0;
 const NON_UI_BLOCK_UI_MS = 300;
@@ -51,6 +59,7 @@ export function playAppSound(id: AppSoundId): void {
   if (!loadToastSoundEnabled()) return;
   if (typeof window === 'undefined') return;
   if (prefersReducedSound()) return;
+  if (loadSoundMuted()) return;
 
   if (id !== 'uiTap') touchNonUiSoundClock();
 
@@ -65,6 +74,7 @@ export function playAppSound(id: AppSoundId): void {
       return;
     }
   }
+  el.volume = loadSoundVolume01();
   el.currentTime = 0;
   void el.play().catch(() => {
     /* missing file or autoplay policy */
@@ -76,6 +86,7 @@ export function tryPlayGlobalUiTapSound(): void {
   if (!loadToastSoundEnabled()) return;
   if (typeof window === 'undefined') return;
   if (prefersReducedSound()) return;
+  if (loadSoundMuted()) return;
 
   const t = nowMs();
   if (t - lastNonUiSoundMs < NON_UI_BLOCK_UI_MS) return;
