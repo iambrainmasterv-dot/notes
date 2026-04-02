@@ -590,6 +590,10 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
   }, []);
 
   useEffect(() => {
+    if (narrowNav) setAssistantDockOpen(false);
+  }, [narrowNav]);
+
+  useEffect(() => {
     if (!mobileNavOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setMobileNavOpen(false);
@@ -876,7 +880,7 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
                 <div className="app-nav-drawer-scroll">
                   <AppNavSections
                     {...navSectionProps}
-                    showAssistantDockToggle={!wideViewport}
+                    showAssistantDockToggle={false}
                     onNavigate={() => setMobileNavOpen(false)}
                   />
                 </div>
