@@ -3,12 +3,7 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import type { ThemeMode, AccentColor, UIScale, FontScale, ThemeSettings } from '../types';
 import type { AndroidNotifUserSettings } from '../notifications/androidSettings';
 import { loadToastSoundEnabled, saveToastSoundEnabled } from '../audio/toastSoundSettings';
-import {
-  loadSoundMuted,
-  loadSoundVolumePercent,
-  saveSoundMuted,
-  saveSoundVolumePercent,
-} from '../audio/soundOutputSettings';
+import { loadSoundVolumePercent, saveSoundVolumePercent } from '../audio/soundOutputSettings';
 import { applySoundOutputToAllCachedAudio } from '../audio/appSounds';
 import { APP_VERSION } from '../version';
 
@@ -68,7 +63,6 @@ export function ThemePanel({
   onAndroidNotifChange,
 }: Props) {
   const [toastSounds, setToastSounds] = useState(loadToastSoundEnabled);
-  const [soundMuted, setSoundMuted] = useState(loadSoundMuted);
   const [soundVolumePct, setSoundVolumePct] = useState(loadSoundVolumePercent);
 
   return (
@@ -197,35 +191,6 @@ export function ThemePanel({
           >
             <span>○</span>
             <span>Sound off</span>
-          </button>
-        </div>
-        <div
-          className="theme-modes"
-          style={{ marginTop: 12, opacity: toastSounds ? 1 : 0.45, pointerEvents: toastSounds ? 'auto' : 'none' }}
-        >
-          <button
-            type="button"
-            className={`theme-mode-btn ${!soundMuted ? 'active' : ''}`}
-            onClick={() => {
-              saveSoundMuted(false);
-              setSoundMuted(false);
-              applySoundOutputToAllCachedAudio();
-            }}
-          >
-            <span>✓</span>
-            <span>Unmuted</span>
-          </button>
-          <button
-            type="button"
-            className={`theme-mode-btn ${soundMuted ? 'active' : ''}`}
-            onClick={() => {
-              saveSoundMuted(true);
-              setSoundMuted(true);
-              applySoundOutputToAllCachedAudio();
-            }}
-          >
-            <span>○</span>
-            <span>Mute</span>
           </button>
         </div>
         <label className="theme-label" style={{ display: 'block', marginTop: 12 }}>

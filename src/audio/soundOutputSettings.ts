@@ -1,21 +1,4 @@
 const VOLUME_KEY = 'notetasks.soundVolumePct';
-const MUTE_KEY = 'notetasks.soundMuted';
-
-export function loadSoundMuted(): boolean {
-  try {
-    return localStorage.getItem(MUTE_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
-export function saveSoundMuted(muted: boolean): void {
-  try {
-    localStorage.setItem(MUTE_KEY, muted ? '1' : '0');
-  } catch {
-    /* ignore */
-  }
-}
 
 /** 0–1 linear gain (default 1). */
 export function loadSoundVolume01(): number {
