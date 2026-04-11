@@ -4,10 +4,30 @@ import { normalizeWeekdayToken } from '../utils/scheduleTemplate.js';
  * Heuristic: user clearly asked to mutate data (not just brainstorming).
  */
 const MUTATION_VERBS =
-  /\b(add|create|make|new|insert|put|write|save|draft|record|log|delete|remove|trash|update|change|rename|edit|set|mark\s+complete|complete|finish|done|undo|revert)\b/i;
+  /\b(add|create|make|new|insert|put|write|save|draft|record|log|track|jot|capture|delete|remove|trash|update|change|rename|edit|set|mark\s+complete|complete|finish|done|undo|revert)\b/i;
+
+/** Phrases that imply capturing data into the app without a bare verb. */
+const IMPLICIT_CAPTURE_PHRASES =
+  /\b(remember\s+this|jot\s+down|save\s+(this|that|it|these|those|them)|put\s+(this|that|these|those)\s+(in|into)|put\s+it\s+in|store\s+(this|that|it|these|those)\s+(in|into)|add\s+(these|those|them)|add\s+to\s+my\s+(notes?|tasks?)|put\s+in\s+(my\s+)?(notes?|tasks?|notetasks))\b/i;
+
+/**
+ * Multi-line message with a list marker plus an intent to capture — not triggered by pure "what do you think?" lists.
+ */
+function listPlusCaptureIntent(t) {
+  if (!/\n/.test(t)) return false;
+  if (!/(?:^|\n)\s*(?:[-*•]|\d+[\).\]]\s)/m.test(t)) return false;
+  return /\b(add|save|put|create|log|track|jot|note\s*tasks?|my\s+notes?|my\s+tasks?|in\s+the\s+app)\b/i.test(t);
+}
 
 const SOFT =
   /\b(should i|could i|would it|what if|maybe|perhaps|recommend|suggest|ideas?|thoughts?|help me decide|do you think)\b/i;
+
+/** "Should I track …?" life advice — not a request to mutate the app (unless they mention NoteTasks / notes / tasks / the app). */
+const SOFT_TRACK_ADVICE =
+  /\b(should|could|would)\s+i\s+track\b/i;
+
+const APP_CAPTURE_ANCHOR =
+  /\b(notetasks|my\s+notes?|my\s+tasks?|in\s+the\s+app|into\s+the\s+app|in\s+notetasks)\b/i;
 
 /** Short follow-ups after Jarvis proposed a concrete change */
 const SHORT_AFFIRM =
@@ -23,14 +43,24 @@ export function isClearMutationIntent(userText) {
   }
 
   const soft = SOFT.test(t);
-  if (soft && MUTATION_VERBS.test(t)) {
-    return true;
-  }
+  const verbOrImplicit = MUTATION_VERBS.test(t) || IMPLICIT_CAPTURE_PHRASES.test(t) || listPlusCaptureIntent(t);
+
   if (soft) {
+    if (
+      SOFT_TRACK_ADVICE.test(t) &&
+      !APP_CAPTURE_ANCHOR.test(t) &&
+      !IMPLICIT_CAPTURE_PHRASES.test(t) &&
+      !listPlusCaptureIntent(t)
+    ) {
+      return false;
+    }
+    if (verbOrImplicit) {
+      return true;
+    }
     return false;
   }
 
-  return MUTATION_VERBS.test(t);
+  return verbOrImplicit;
 }
 
 export function toolWorkContext(toolName, args) {

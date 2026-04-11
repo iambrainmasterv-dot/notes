@@ -47,6 +47,11 @@ export const APP_CAPABILITIES_MARKDOWN = `
 - **Mon–Fri**: \`weekday_preset: "monday_to_friday"\` **or** \`weekdays: ["monday",…,"friday"]\` → **one** template with \`schedule_kind: "weekdays"\`.
 - **Aliases** (agent): \`weekday\` → weekdays, \`date\` → more.
 
+## Jarvis patterns (workouts, weekends, capture)
+- **Workouts**: One **note** or **task** with a clear title and a **multi-line description** (warm-up, exercises, sets/reps, rest), **or** a **parent** item with **child tasks** per exercise; use **target** / **progress** when counts matter. **Recurring** gym days → **create_schedule_template** (weekdays / etc.), not only text in the title.
+- **Weekends / trips**: One **note** with dated sections in the description for a narrative plan, **or** **separate tasks** with **deadline** \`YYYY-MM-DDTHH:mm\` for timed events; **daily** items use **HH:mm** only.
+- **When the user wants data saved**: Call **create_note**, **create_task**, or **create_schedule_template** — do not rely on chat-only replies for items they asked to add, track, or store.
+
 ## Jarvis-led flows (match product behavior)
 - **Create**: If title missing, ask in chat before tools. **Recurring** wording → template or daily as appropriate; **never** only append "every Friday" to a normal note title. If schedule intent is ambiguous, **ask** (one-off vs daily vs template; which **None** / **Daily** / **Weekdays** / **Dates** / **More** and which days). If user says **template**, map their days/dates into rules or ask what is missing.
 - **Delete**: In chat, summarize what will be deleted (and cascade), wait for explicit **yes**, then **delete_***.
@@ -56,7 +61,7 @@ export const APP_CAPABILITIES_MARKDOWN = `
 ## Tools workflow (critical)
 - **list_notes** / **list_tasks** before **update_***, **delete_***, or nested **create_*** unless you already have the correct **id** from this chat.
 - **list_notes** / **list_tasks** with \`completed: true\` → items shown on the **Completed** tab.
-- **create_note** / **create_task**: require **title**; optional description, deadline, \`parent_id\` / \`parent_type\`, daily, task \`target\` (default 1) / \`progress\` (default 0).
+- **create_note** / **create_task**: require **title**; optional **description** (multi-line OK for workouts, itineraries), deadline, \`parent_id\` / \`parent_type\` for nesting, daily, task \`target\` (default 1) / \`progress\` (default 0).
 - **update_***: require **id**; only send fields that change.
 - **delete_***: require **id**; **cascade** defaults true (set \`cascade: false\` to delete only that node if children should remain — rarely what users want).
 - **get_app_capabilities**: returns this document.

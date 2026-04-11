@@ -1503,7 +1503,7 @@ export const AGENT_TOOL_DEFINITIONS = [
     function: {
       name: 'create_note',
       description:
-        'Create a one-off or daily-calendar note. Set daily=true ONLY for every calendar day (including weekends). Do NOT put "every Friday", "weekly on Monday", etc. in title/description instead of scheduling — use create_schedule_template or ask the user to clarify. Do NOT use daily=true for weekdays-only; use templates.',
+        'Create a one-off or daily-calendar note. Use multi-line description (newlines) for structured plans: workouts (sets/reps/blocks), weekend outlines, itineraries. Use parent_id + parent_type to nest under a parent note/task when grouping related items. Set daily=true ONLY for every calendar day (including weekends). Do NOT put "every Friday", "weekly on Monday", etc. in title/description instead of scheduling — use create_schedule_template or ask the user to clarify. Do NOT use daily=true for weekdays-only; use templates.',
       parameters: {
         type: 'object',
         properties: {
@@ -1527,7 +1527,7 @@ export const AGENT_TOOL_DEFINITIONS = [
     function: {
       name: 'create_task',
       description:
-        'Create a one-off or daily-calendar task. Default target=1 and progress=0 if omitted. Do NOT encode "every Friday" / weekdays / monthly patterns only in title or description — use create_schedule_template or ask which schedule they want. daily=true ONLY for every calendar day; weekdays-only → template with weekdays.',
+        'Create a one-off or daily-calendar task. Default target=1 and progress=0 if omitted. Use multi-line description for workout blocks, weekend plans, or step lists; use parent_id + parent_type for child tasks under a parent. Set target/progress when the user gives countable work (e.g. sets). Do NOT encode "every Friday" / weekdays / monthly patterns only in title or description — use create_schedule_template or ask which schedule they want. daily=true ONLY for every calendar day; weekdays-only → template with weekdays.',
       parameters: {
         type: 'object',
         properties: {
