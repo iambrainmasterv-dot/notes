@@ -69,7 +69,7 @@ export function AssistantPanel({
     <div className={`assistant-panel ${compact ? 'assistant-panel--compact' : ''}`}>
       {guestMode && (
         <p className="assistant-banner" role="status">
-          Guest mode: Jarvis uses your NoteTasks server. Sign in to chat; your notes and tasks still work offline on this device.
+          Sign in to use Jarvis.
         </p>
       )}
 
@@ -84,7 +84,7 @@ export function AssistantPanel({
 
       {showInitialCheck && (
         <p className="assistant-setup" role="status">
-          Checking connection to Ollama…
+          Checking Ollama…
         </p>
       )}
 
@@ -96,30 +96,14 @@ export function AssistantPanel({
 
       {showSetupGuide && (
         <div className="assistant-setup">
-          <h3 className="assistant-setup-title">Set up Jarvis (local Ollama)</h3>
+          <h3 className="assistant-setup-title">Ollama</h3>
           <p style={{ margin: '0 0 8px' }}>
-            Jarvis needs{' '}
             <a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer">
-              Ollama
-            </a>{' '}
-            running on a machine your <strong>NoteTasks API</strong> can reach (usually this PC when you use{' '}
-            <code>npm run dev:local</code>).
+              Install Ollama
+            </a>
+            , run <code>ollama pull {ollamaSuggestedModel}</code>, set <code>OLLAMA_BASE_URL</code> in{' '}
+            <code>server/.env</code> (e.g. <code>http://127.0.0.1:11434</code>), restart the API.
           </p>
-          <ol>
-            <li>Install Ollama from the link above and start it.</li>
-            <li>
-              In a terminal, run: <code>ollama pull {ollamaSuggestedModel}</code>
-            </li>
-            <li>
-              Set <code>OLLAMA_BASE_URL</code> in <code>server/.env</code> (or your host&apos;s env) to the Ollama origin
-              the API can reach — e.g. <code>http://127.0.0.1:11434</code> locally, or your <strong>https</strong> ngrok
-              origin if the API is hosted. Restart the API after changing it.
-            </li>
-            <li>
-              If the API runs <strong>in the cloud</strong>, it cannot reach Ollama on your PC at 127.0.0.1; use a tunnel
-              and put that URL in <code>OLLAMA_BASE_URL</code> on the server.
-            </li>
-          </ol>
           <div className="assistant-setup-actions">
             <button
               type="button"
@@ -129,9 +113,6 @@ export function AssistantPanel({
             >
               {ollamaCheckPending ? 'Checking…' : 'Check again'}
             </button>
-            <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-              Server env: <code>OLLAMA_BASE_URL</code>
-            </span>
           </div>
         </div>
       )}
@@ -163,18 +144,7 @@ export function AssistantPanel({
           <div className="assistant-messages">
             {messages.length === 0 && !loading && (
               <p className="assistant-empty">
-                {jarvisMode === 'chat' ? (
-                  <>
-                    <strong>Chat</strong> — general conversation only. Jarvis does not read or change your notes, tasks, or
-                    schedule.
-                  </>
-                ) : (
-                  <>
-                    <strong>Edit</strong> — Jarvis can use your NoteTasks data. Clear requests may apply right away;
-                    ambiguous ones show <strong>Accept</strong>, <strong>Deny</strong>, and <strong>Redo</strong>. Ask to{' '}
-                    <strong>undo</strong> if something went wrong.
-                  </>
-                )}
+                {jarvisMode === 'chat' ? 'Chat: no app changes.' : 'Edit: changes may need Accept.'}
               </p>
             )}
             {messages.map((m, i) => (
@@ -186,7 +156,7 @@ export function AssistantPanel({
                   mutationsEnabled &&
                   (m.pendingMutations?.length ?? 0) > 0 && (
                     <div className="assistant-proposal-actions">
-                      <span className="assistant-proposal-hint">Apply these changes?</span>
+                      <span className="assistant-proposal-hint">Confirm?</span>
                       <div className="assistant-proposal-buttons">
                         <button
                           type="button"
@@ -230,7 +200,7 @@ export function AssistantPanel({
             <textarea
               ref={inputRef}
               className="input assistant-input"
-              placeholder="Message Jarvis…"
+              placeholder="Message…"
               rows={compact ? 2 : 3}
               disabled={loading}
               onKeyDown={(e) => {

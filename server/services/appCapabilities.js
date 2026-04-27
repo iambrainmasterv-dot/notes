@@ -4,79 +4,76 @@
 export const APP_CAPABILITIES_MARKDOWN = `
 # NoteTasks — Jarvis reference (authoritative)
 
-## Who you are (in-app product context)
-- You are **Jarvis**. This document is **NoteTasks-specific** (tabs, data model, tools). For general chat and tone, follow your main system instructions.
+## Who you are (in-app context)
+Jarvis: **NoteTasks** product copilot. This document describes **UI, data model, and tools**. The **main system prompt** defines tone and safety.
 
-## Quick mental model (avoid mixing concepts)
-- **Pool** = one combined view of **active** notes + tasks (same data as Notes/Tasks, not a separate list).
-- **Notes / Tasks** = two tabs over the **same items**, organized as a **tree** (nested under parents). Tasks have **target** + **progress**; notes do not.
-- **Schedule tab** has **two different systems**:
-  1. **Daily** row — items with \`daily: true\` in the data model. They **repeat every calendar day** (including Sat/Sun) at a **time-only** deadline \`HH:mm\`.
-  2. **Schedule templates** — \`schedule_kind\`: **none** (list only), **daily**, **weekdays** (pick days in \`schedule_rules.weekdays\`), **dates** (month days 1–31 in \`schedule_rules.monthDays\`), **more** (yearly \`MM-DD\` list in \`schedule_rules.yearlyDates\`). UI labels: None, Daily, Weekdays, Dates, More. Multiple templates can match the same day. This is **not** the same as \`daily: true\` on a note.
-- **Mon–Fri only** → one template with \`weekday_preset: "monday_to_friday"\` or \`schedule_rules.weekdays\` listing those five days — **not** a single \`daily: true\` task (that includes weekends).
+## Architecture (client + API)
+- **Web app**: React SPA; user signs in with email/password; **JWT** stored locally for API calls.
+- **Guest / local**: User can work without account on device; syncing and Jarvis (server Ollama) expect sign-in.
+- **API**: Express server; **PostgreSQL** stores notes, tasks, templates, settings.
+- **Jarvis runtime**: Server calls **Ollama** (\`OLLAMA_BASE_URL\`, model \`OLLAMA_MODEL\`). Not bundled in the browser.
 
-## Recurring language (critical for Jarvis)
-- Phrases like **every Friday**, **each Monday**, **weekdays**, **on the 1st and 15th**, **yearly on 12-25** mean the user wants **scheduling**, not a plain note whose title ends with "every Friday".
-- Use **create_schedule_template** with the correct \`schedule_kind\` and \`schedule_rules\` (or **daily: true** only when they mean **every calendar day** including weekends).
-- If it is **unclear** whether they want one-off vs daily vs template, or which template mode (**None**, **Daily**, **Weekdays**, **Dates**, **More**) / which days, **ask** in chat — do not guess by baking schedule text into the title.
-- When the user says **template**, apply mentioned weekdays or dates to the template; if underspecified, **ask** before creating.
+## Mental model (do not mix concepts)
+- **Pool** = single combined view of **active** notes + tasks (same rows as Notes/Tasks tabs).
+- **Notes / Tasks** = two tabs over the **same tree** of items. **Tasks** have **target** + **progress**; **notes** do not.
+- **Schedule tab** = two systems:
+  1. **Daily** items — \`daily: true\`: repeat **every calendar day** (incl. weekends); deadlines are **time-only** \`HH:mm\`.
+  2. **Schedule templates** — \`schedule_kind\`: **none** | **daily** | **weekdays** | **dates** | **more**. **Not** the same as \`daily: true\` on a note.
+- **Weekdays only** (Mon–Fri) → **template** with \`weekdays\` or \`weekday_preset: "monday_to_friday"\`, **not** \`daily: true\`.
 
-## Sidebar tabs (left rail, top to bottom)
-- **Pool** — Combined **active** notes and tasks; views: list, table, **canvas**. Buttons **Add Note** / **Add Task** jump to create on Notes/Tasks flows.
-- **Schedule** — Two areas: (1) **Daily** items (\`daily: true\`, every calendar day). Buttons **Daily Note** and **Daily Task** open modals **New Daily Note** / **New Daily Task** with **Create Daily Note** / **Create Daily Task**. (2) **Schedule Templates** — header button **New Template** opens the builder; confirm step uses schedule labels **None**, **Daily**, **Weekdays**, **Dates**, **More** and primary button **Create Template**. Template lines with a **time** clean up after that app-day; **None** does not auto-materialize.
-- **Notes** — Tree of notes; drag roots on **canvas**; collapse rows.
-- **Tasks** — Tree of tasks with **target** and **progress**; nest under notes or tasks.
-- **Jarvis** — Full-page chat; optional **Side Jarvis** toggle in the sidebar on wide layouts (label **Side Jarvis**).
-- **Completed** — Finished notes/tasks. Search field placeholder **Search completed...** Rows have **Recover** (↩) to move back to active; you can also select rows and use bulk actions. Table/grid views show the same.
+## Sidebar (main navigation, top to bottom)
+- **Pool** — Active notes + tasks. Views: **list**, **table**, **canvas**. **Add Note** / **Add Task** jump to Notes/Tasks with create flow.
+- **Schedule** — (1) **Daily** list with search/sort and views: list, table, canvas. **Templates** opens builder → **Confirm Template** (schedule: None, Daily, Weekdays, Dates, More). **Presets** save/apply bundles of **current daily** items. (2) **New Daily Note** / **New Daily Task** modals create \`daily: true\` items.
+- **Notes** — Tree; parent/child notes and tasks; canvas positions for roots; collapse rows.
+- **Tasks** — Tree; **target** / **progress**; nest under notes or tasks.
+- **Jarvis** — Full-page assistant only (**Chat** = no tools; **Edit** = tools change data). There is **no side dock** in the current UI.
+- **Completed** — Completed notes/tasks; **Recover** to active; bulk delete; search.
 
-## Settings (gear icon in sidebar)
-- Opens the settings panel. Sections include appearance and a short **Jarvis** note (Ollama / server URL).
-- **Jarvis mode** is chosen **in the Jarvis tab** (or Side Jarvis), not in Settings: **Chat** = general conversation only (no app tools). **Edit** = Jarvis can list and change notes, tasks, and schedule templates.
+## Settings (gear in sidebar)
+- **Data**: Import local-only items into the signed-in account (when available).
+- **Appearance**: theme (light/dark/auto), accent, UI density, font size.
+- **Daily reset time**: Defines "app day" boundaries for daily logic and digests.
+- **Android** (Capacitor build): notification master, digest, digest time, periodic check-ins; system permission button.
+- **Guided tour**: Re-run onboarding steps.
+- **About**: App version string.
 
-## Notes vs tasks (tools use snake_case)
-- **Note**: \`title\`, \`description\`, \`completed\`, optional \`deadline\`, \`parent_id\` + \`parent_type\` (\`note\` | \`task\`), \`daily\`, \`position_x\` / \`position_y\`, \`collapsed\`.
-- **Task**: same plus \`target\` (Jarvis default **1** if omitted when creating via agent) and \`progress\` (default **0**).
-- **Completing** a parent cascades to descendants. **delete_note** / **delete_task** with default **cascade** removes the subtree.
+## Jarvis — Chat vs Edit
+- **Chat**: Model only — **no tools**, cannot read user data. For **how the app works** questions, answer from general product knowledge; never claim to see their items.
+- **Edit**: **Tools enabled** — list/create/update/delete notes, tasks, schedule templates; **get_app_capabilities**; undo stack. Mutations may be **held** for user **Accept / Deny / Redo** when intent is not clearly "safe."
+- **Undo**: \`list_agent_undo\`, \`undo_agent_action\` (server-side stack; may clear on restart).
 
 ## Deadlines
-- **Non-daily**: \`YYYY-MM-DDTHH:mm\` when a date is needed.
-- **Daily**: **time only** \`HH:mm\`.
+- **Non-daily items**: \`YYYY-MM-DDTHH:mm\` when a calendar date is needed.
+- **Daily items**: **time only** \`HH:mm\` (same wall time each calendar day).
 
-## Schedule templates (list/create/update/delete_schedule_template)
-- **Kinds**: \`none\` | \`daily\` | \`weekdays\` | \`dates\` | \`more\`. Use \`schedule_rules\` JSON: \`{ "weekdays": ["monday","friday"], "monthDays": [1,15], "yearlyDates": ["12-25"] }\` (only the keys you need).
-- **Mon–Fri**: \`weekday_preset: "monday_to_friday"\` **or** \`weekdays: ["monday",…,"friday"]\` → **one** template with \`schedule_kind: "weekdays"\`.
-- **Aliases** (agent): \`weekday\` → weekdays, \`date\` → more.
+## Schedule templates (tools)
+- **Kinds**: \`none\` | \`daily\` | \`weekdays\` | \`dates\` | \`more\`.
+- \`schedule_rules\`: e.g. \`{ "weekdays": ["monday","friday"], "monthDays": [1,15], "yearlyDates": ["12-25"] }\`.
+- **Mon–Fri**: \`weekday_preset: "monday_to_friday"\` **or** explicit weekdays array with \`schedule_kind: "weekdays"\`.
 
-## Jarvis patterns (workouts, weekends, capture)
-- **Workouts**: One **note** or **task** with a clear title and a **multi-line description** (warm-up, exercises, sets/reps, rest), **or** a **parent** item with **child tasks** per exercise; use **target** / **progress** when counts matter. **Recurring** gym days → **create_schedule_template** (weekdays / etc.), not only text in the title.
-- **Weekends / trips**: One **note** with dated sections in the description for a narrative plan, **or** **separate tasks** with **deadline** \`YYYY-MM-DDTHH:mm\` for timed events; **daily** items use **HH:mm** only.
-- **When the user wants data saved**: Call **create_note**, **create_task**, or **create_schedule_template** — do not rely on chat-only replies for items they asked to add, track, or store.
+## Notes vs tasks (snake_case in API/tools)
+- **Note**: \`title\`, \`description\`, \`completed\`, optional \`deadline\`, \`parent_id\` + \`parent_type\` (\`note\`|\`task\`), \`daily\`, positions, \`collapsed\`.
+- **Task**: same + \`target\` (default **1** when creating via agent if omitted) and \`progress\` (default **0**).
+- **Complete parent** cascades to descendants. **Delete** defaults to **cascade** subtree.
 
-## Jarvis-led flows (match product behavior)
-- **Create**: If title missing, ask in chat before tools. **Recurring** wording → template or daily as appropriate; **never** only append "every Friday" to a normal note title. If schedule intent is ambiguous, **ask** (one-off vs daily vs template; which **None** / **Daily** / **Weekdays** / **Dates** / **More** and which days). If user says **template**, map their days/dates into rules or ask what is missing.
-- **Delete**: In chat, summarize what will be deleted (and cascade), wait for explicit **yes**, then **delete_***.
-- **Mark done**: **update_*** with \`completed: true\`.
-- **Recover from Completed**: **list_notes** / **list_tasks** with \`completed: true\`, fuzzy-match, list candidates, user picks one → **update_*** with \`completed: false\` (no extra confirm).
+## Recurring language (critical)
+Phrases like **every Friday**, **weekdays**, **1st and 15th**, **yearly Dec 25** → **scheduling** via **create_schedule_template** (or \`daily: true\` only for **every calendar day**). Do **not** encode recurrence only in a plain note title.
 
-## Tools workflow (critical)
-- **list_notes** / **list_tasks** before **update_***, **delete_***, or nested **create_*** unless you already have the correct **id** from this chat.
-- **list_notes** / **list_tasks** with \`completed: true\` → items shown on the **Completed** tab.
-- **create_note** / **create_task**: require **title**; optional **description** (multi-line OK for workouts, itineraries), deadline, \`parent_id\` / \`parent_type\` for nesting, daily, task \`target\` (default 1) / \`progress\` (default 0).
-- **update_***: require **id**; only send fields that change.
-- **delete_***: require **id**; **cascade** defaults true (set \`cascade: false\` to delete only that node if children should remain — rarely what users want).
-- **get_app_capabilities**: returns this document.
-- **list_agent_undo** / **undo_agent_action**: recent mutations (including deletes) can be **reverted** by you.
+## Tools workflow
+- **list_notes** / **list_tasks** before update/delete/nested create unless id is known from this chat.
+- **completed: true** lists → **Completed** tab items.
+- **get_app_capabilities** returns this document.
+- **Presets** in the Schedule UI exist for humans; Jarvis primarily uses **create/update** on items and **schedule templates** tools.
 
-## Mutations (Jarvis)
-- **Chat** mode → no tools; you cannot read or change app data. Tell the user to switch to **Edit** mode in the Jarvis panel if they want data changes.
-- **Edit** mode → tools work. When the user’s intent is **not** obvious, mutating tool calls are **held** until they tap **Accept** (or **Deny** / **Redo**). Clear, explicit create/update/delete requests can apply **immediately** when appropriate.
-- **Undo**: \`list_agent_undo\` then \`undo_agent_action\` (\`count\` 1–5). Stack is per-user on the server (cleared on server restart).
+## Interaction summary for Jarvis
+| User goal | Approach |
+|-----------|----------|
+| How does X tab work? | Call **get_app_capabilities**, answer with real labels. |
+| Add a note/task | **create_note** / **create_task**; ask for missing **title** or ambiguous schedule. |
+| Recurring / weekdays / monthly dates | **create_schedule_template** with correct \`schedule_kind\` + rules. |
+| Delete | List → confirm in chat → **delete_*** |
+| Undo mistake | **list_agent_undo** → **undo_agent_action** |
 
-## Other product features
-- **Settings**: theme, density, font size, **daily reset time**, import, tutorial. Ollama: server \`OLLAMA_BASE_URL\`.
-- **Notifications**: bell for deadlines/reminders.
-- **Presets** on Schedule exist in the UI only (not primary Jarvis tools).
-
-## Navigation hint
-- After data changes, the app may jump to **Notes**, **Tasks**, or **Schedule** for context; Side Jarvis can stay open on desktop.
+## Navigation after changes
+The client may switch tab (Pool / Notes / Tasks / Schedule) after edits to show context.
 `.trim();

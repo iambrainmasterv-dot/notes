@@ -115,13 +115,21 @@ export function useScheduleTemplates() {
     api
       .getScheduleTemplates()
       .then((rows) => {
-        if (!cancelled) setTemplates((rows as unknown as RawTemplate[]).map(fromApi));
+        if (cancelled) return;
+        const next = (rows as unknown as RawTemplate[]).map(fromApi);
+        setTemplates(next);
+        storage.saveAccountScheduleTemplatesCache(next);
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, [user, isGuest]);
+
+  useEffect(() => {
+    if (isGuest || !user) return;
+    storage.saveAccountScheduleTemplatesCache(templates);
+  }, [templates, user, isGuest]);
 
   const addTemplate = useCallback(
     async (data: NewScheduleTemplateData) => {

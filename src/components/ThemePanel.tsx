@@ -1,10 +1,6 @@
-import { useState } from 'react';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import type { ThemeMode, AccentColor, UIScale, FontScale, ThemeSettings } from '../types';
 import type { AndroidNotifUserSettings } from '../notifications/androidSettings';
-import { loadToastSoundEnabled, saveToastSoundEnabled } from '../audio/toastSoundSettings';
-import { loadSoundVolumePercent, saveSoundVolumePercent } from '../audio/soundOutputSettings';
-import { applySoundOutputToAllCachedAudio } from '../audio/appSounds';
 import { APP_VERSION } from '../version';
 
 interface Props {
@@ -62,18 +58,10 @@ export function ThemePanel({
   androidNotif,
   onAndroidNotifChange,
 }: Props) {
-  const [toastSounds, setToastSounds] = useState(loadToastSoundEnabled);
-  const [soundVolumePct, setSoundVolumePct] = useState(loadSoundVolumePercent);
-
   return (
     <div className="theme-panel">
       <div className="theme-section">
         <span className="theme-label">Data</span>
-        <p className="theme-help">
-          {localImportAvailable
-            ? 'Local notes or tasks were found on this device from before you signed in.'
-            : 'No local-only notes or tasks found on this device.'}
-        </p>
         <button
           type="button"
           className="btn btn-full"
@@ -159,70 +147,9 @@ export function ThemePanel({
         />
       </div>
 
-      <div className="theme-section">
-        <span className="theme-label">App sounds</span>
-        <p className="theme-help">
-          When enabled, the app plays short MP3s from <code>public/sounds/</code>: deadline toasts (
-          <code>notetasks-notify-deadline.mp3</code>), Completed-tab reminder (
-          <code>notetasks-notify-completed-tab.mp3</code>), Jarvis reply (
-          <code>notetasks-jarvis-done.mp3</code>), tab change (<code>notetasks-tab.mp3</code>), sign-in /
-          guest (<code>notetasks-auth.mp3</code>), most other clicks (<code>notetasks-ui-tap.mp3</code>),
-          new note/task or Jarvis send (<code>notetasks-create.mp3</code>). Use ~0.2–1.2s clips, normalized.
-        </p>
-        <div className="theme-modes">
-          <button
-            type="button"
-            className={`theme-mode-btn ${toastSounds ? 'active' : ''}`}
-            onClick={() => {
-              saveToastSoundEnabled(true);
-              setToastSounds(true);
-            }}
-          >
-            <span>✓</span>
-            <span>Sound on</span>
-          </button>
-          <button
-            type="button"
-            className={`theme-mode-btn ${!toastSounds ? 'active' : ''}`}
-            onClick={() => {
-              saveToastSoundEnabled(false);
-              setToastSounds(false);
-            }}
-          >
-            <span>○</span>
-            <span>Sound off</span>
-          </button>
-        </div>
-        <label className="theme-label" style={{ display: 'block', marginTop: 12 }}>
-          Volume
-        </label>
-        <input
-          type="range"
-          className="input"
-          min={0}
-          max={100}
-          value={soundVolumePct}
-          disabled={!toastSounds}
-          onChange={(e) => {
-            const v = Number(e.target.value);
-            setSoundVolumePct(v);
-            saveSoundVolumePercent(v);
-            applySoundOutputToAllCachedAudio();
-          }}
-          style={{ width: '100%', maxWidth: 280, marginTop: 8, display: 'block' }}
-        />
-      </div>
-
       {androidNotif && onAndroidNotifChange && (
         <div className="theme-section">
           <span className="theme-label">Android notifications</span>
-          <p className="theme-help">
-            Deadline pushes use your per-item reminder (default 10 minutes before, plus at due time). Optional daily
-            digest, ~2h check-in when you have due-today items, daily progress, or matching templates tomorrow, and
-            pinned items. Custom sound: copy{' '}
-            <code>public/sounds/notetasks-notify-deadline.mp3</code> to Android{' '}
-            <code>res/raw/notetasks_notify_deadline.mp3</code>. Requires notification permission.
-          </p>
           <button
             type="button"
             className="btn btn-full"
@@ -249,9 +176,9 @@ export function ThemePanel({
               <span>Off</span>
             </button>
           </div>
-          <p className="theme-help" style={{ marginTop: 12 }}>
-            Daily digest (today&apos;s schedule summary and open tasks)
-          </p>
+          <span className="theme-label" style={{ display: 'block', marginTop: 12 }}>
+            Digest
+          </span>
           <div className="theme-modes">
             <button
               type="button"
@@ -280,10 +207,9 @@ export function ThemePanel({
             onChange={(e) => onAndroidNotifChange({ digestTime: e.target.value })}
             style={{ width: 'auto', marginTop: 8 }}
           />
-          <p className="theme-help" style={{ marginTop: 12 }}>
-            ~2h check-in (paused 22:00–08:00). Only sent if something is due today, daily progress exists, or a
-            schedule template matches tomorrow.
-          </p>
+          <span className="theme-label" style={{ display: 'block', marginTop: 12 }}>
+            Check-ins
+          </span>
           <div className="theme-modes">
             <button
               type="button"
@@ -305,18 +231,9 @@ export function ThemePanel({
         </div>
       )}
 
-      <div className="theme-section">
-        <span className="theme-label">Jarvis</span>
-        <p className="theme-help">
-          Jarvis uses Ollama. The API reads <code>OLLAMA_BASE_URL</code> on the server (e.g. ngrok https origin on Railway).
-          Use <strong>Chat</strong> or <strong>Edit</strong> mode in the Jarvis tab — Edit can change your notes and tasks.
-        </p>
-      </div>
-
       {onRerunTutorial && (
         <div className="theme-section">
           <span className="theme-label">Guided tour</span>
-          <p className="theme-help">Walk through each tab and settings again.</p>
           <button type="button" className="btn btn-full" onClick={() => onRerunTutorial()}>
             Re-run tutorial
           </button>
@@ -325,7 +242,9 @@ export function ThemePanel({
 
       <div className="theme-section">
         <span className="theme-label">About</span>
-        <p className="theme-help">NoteTasks version <span className="app-version-strong">{APP_VERSION}</span></p>
+        <p style={{ margin: 0 }}>
+          <span className="app-version-strong">{APP_VERSION}</span>
+        </p>
       </div>
     </div>
   );

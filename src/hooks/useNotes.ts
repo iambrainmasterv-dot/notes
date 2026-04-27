@@ -5,7 +5,6 @@ import { api } from '../api/client';
 import { useAuth } from '../auth/AuthProvider';
 import { storage } from '../storage';
 import { nextCanvasPosition } from '../utils';
-import { playAppSound } from '../audio/appSounds';
 
 function toApi(n: Note) {
   return {
@@ -93,7 +92,6 @@ export function useNotes() {
       setNotes((prev) => {
         const pos = data.position ?? nextCanvasPosition(prev.filter((n) => !n.completed && !n.parentId).length);
         const note: Note = { ...data, id, type: 'note', completed: false, createdAt: now, position: pos };
-        playAppSound('createAction');
         api.createNote(toApi(note)).catch(() => {});
         return [...prev, note];
       });

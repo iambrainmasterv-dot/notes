@@ -466,7 +466,7 @@ export function SchedulePage({
 
       {viewMode === 'list' && (
         <div className="card-grid card-grid--masonry">
-          {listMasonryRows.length === 0 && <p className="empty-state">No daily items yet. Create one, apply a preset, or set up a template!</p>}
+          {listMasonryRows.length === 0 && <p className="empty-state">No daily items.</p>}
           {listMasonryRows.map(({ item, depth }) =>
             item.type === 'note' ? (
               <NoteCard
@@ -521,7 +521,7 @@ export function SchedulePage({
             </thead>
             <tbody>
               {visibleFiltered.length === 0 && (
-                <tr><td colSpan={6} className="empty-state">No daily items yet.</td></tr>
+                <tr><td colSpan={6} className="empty-state">No daily items.</td></tr>
               )}
               {visibleFiltered.map((item) => {
                 const fromT = item.type === 'note'
@@ -555,7 +555,7 @@ export function SchedulePage({
 
       {viewMode === 'canvas' && (
         <div className="canvas-view">
-          {visibleFiltered.length === 0 && <p className="empty-state" style={{ position: 'absolute', width: '100%', top: '40%' }}>No daily items yet.</p>}
+          {visibleFiltered.length === 0 && <p className="empty-state" style={{ position: 'absolute', width: '100%', top: '40%' }}>No daily items.</p>}
           {visibleFiltered.map((item, idx) => {
             const base = canvasPos(idx);
             const offset = dragOffsets[item.id] ?? { x: 0, y: 0 };
@@ -598,14 +598,8 @@ export function SchedulePage({
             New Template
           </button>
         </div>
-        <p className="text-muted" style={{ fontSize: '0.82rem', margin: '4px 0 12px' }}>
-          Templates can be <strong>none</strong> (saved for later), <strong>daily</strong>, <strong>weekdays</strong>,{' '}
-          <strong>dates</strong> (days 1–31 each month), or <strong>more</strong> (yearly dates). Several templates can
-          apply the same day. Items with a <strong>time</strong> are removed after that app-day ends; no time means they
-          stay until you clear them.
-        </p>
 
-        {scheduleTemplates.length === 0 && <p className="empty-state" style={{ padding: '12px 0' }}>No schedule templates yet.</p>}
+        {scheduleTemplates.length === 0 && <p className="empty-state" style={{ padding: '12px 0' }}>No templates.</p>}
 
         <div className="presets-list">
           {scheduleTemplates.map((tpl) => (
@@ -656,7 +650,7 @@ export function SchedulePage({
           </button>
         </div>
 
-        {presets.length === 0 && <p className="empty-state" style={{ padding: '20px 0' }}>No presets saved yet.</p>}
+        {presets.length === 0 && <p className="empty-state" style={{ padding: '20px 0' }}>No presets.</p>}
 
         <div className="presets-list">
           {presets.map((preset) => (
@@ -759,9 +753,6 @@ export function SchedulePage({
 
       {/* Template Builder (big modal) */}
       <Modal open={builderOpen} onClose={() => setBuilderOpen(false)} title="Build Schedule Template">
-        <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: 12 }}>
-          Add notes and tasks that will be included in this template. You'll set the name and schedule on the next step.
-        </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: '55vh', overflowY: 'auto', paddingRight: 4 }}>
           {draftItems.map((d, idx) => (
             <div key={d.key} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 12, borderRadius: 10, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
@@ -897,12 +888,7 @@ export function SchedulePage({
           )}
         </div>
         <p className="text-muted" style={{ fontSize: '0.8rem' }}>
-          {draftItems.filter((d) => d.title.trim()).length} item(s) will be included.
-          {scheduleMode === 'none' && ' None: template stays in the list only — nothing is applied automatically.'}
-          {scheduleMode === 'daily' && ' Daily: items are added every calendar day.'}
-          {scheduleMode === 'weekdays' && ' Weekdays: pick at least one day.'}
-          {scheduleMode === 'dates' && ' Dates: e.g. 1 and 15 → every month on those days.'}
-          {scheduleMode === 'more' && ' More: yearly dates (MM-DD), repeat every year.'}
+          {draftItems.filter((d) => d.title.trim()).length} item(s)
         </p>
         <button className="btn btn-primary btn-full" onClick={handleTemplateConfirm} disabled={!tplName.trim()}>
           Create Template
@@ -915,9 +901,6 @@ export function SchedulePage({
           <label>Preset Name</label>
           <input className="input" value={presetName} onChange={(e) => setPresetName(e.target.value)} autoFocus placeholder="e.g. Weekday Routine" />
         </div>
-        <p className="text-muted" style={{ fontSize: '0.82rem' }}>
-          This will save your current {allDailyItems.length} daily item(s) as a reusable preset.
-        </p>
         <button className="btn btn-primary btn-full" onClick={() => {
           handleSavePreset();
           if (pendingApplyId) {
@@ -938,7 +921,7 @@ export function SchedulePage({
       {/* Warn unsaved */}
       <Modal open={warnUnsaved} onClose={handleWarnCancel} title="Unsaved Daily Items">
         <p className="card-desc" style={{ marginBottom: 4 }}>
-          Your current daily items are not saved in any preset. Applying a new preset will replace them.
+          Applying replaces current daily items.
         </p>
         <div className="card-actions" style={{ justifyContent: 'flex-end', gap: 8 }}>
           <button className="btn" onClick={handleWarnCancel}>Cancel</button>

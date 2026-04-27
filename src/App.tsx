@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
 import type { AssistantWorkContext, Page, ThemeSettings } from './types';
 import type { AppUser } from './auth/AuthProvider';
@@ -22,12 +22,9 @@ import { PoolPage } from './pages/PoolPage';
 import { SchedulePage } from './pages/SchedulePage';
 import { CompletedPage } from './pages/CompletedPage';
 import { AssistantPage } from './pages/AssistantPage';
-import { AssistantDock } from './components/AssistantDock';
 import { ThemePanel } from './components/ThemePanel';
 import { useAssistantChat } from './hooks/useAssistantChat';
 import { loadJarvisMode, saveJarvisMode, type JarvisMode } from './jarvis/jarvisModeStorage';
-import { useGlobalUiTapSound } from './hooks/useGlobalUiTapSound';
-import { playAppSound } from './audio/appSounds';
 import { NotificationBell } from './components/NotificationBell';
 import { Toasts } from './components/Toasts';
 import { GreetingScreen } from './components/GreetingScreen';
@@ -102,9 +99,6 @@ type AppNavSectionsProps = {
   completedCount: number;
   activeCount: number;
   dailyCount: number;
-  showAssistantDockToggle: boolean;
-  assistantDockOpen: boolean;
-  setAssistantDockOpen: React.Dispatch<React.SetStateAction<boolean>>;
   settingsOpen: boolean;
   setSettingsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   settings: ThemeSettings;
@@ -128,9 +122,6 @@ function AppNavSections({
   completedCount,
   activeCount,
   dailyCount,
-  showAssistantDockToggle,
-  assistantDockOpen,
-  setAssistantDockOpen,
   settingsOpen,
   setSettingsOpen,
   settings,
@@ -176,23 +167,6 @@ function AppNavSections({
           </li>
         ))}
       </ul>
-
-      {showAssistantDockToggle && (
-        <div className="sidebar-dock-toggle-wrap">
-          <button
-            type="button"
-            className={`nav-item ${assistantDockOpen ? 'active' : ''}`}
-            onClick={() => {
-              setAssistantDockOpen((o) => !o);
-            }}
-          >
-            <span className="nav-icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="14" y="3" width="7" height="18" rx="1"/><rect x="3" y="5" width="8" height="14" rx="1"/></svg>
-            </span>
-            <span className="nav-label">Side Jarvis</span>
-          </button>
-        </div>
-      )}
 
       <div className="sidebar-bottom">
         <div className="sidebar-bottom-row">
@@ -245,7 +219,6 @@ function AppNavSections({
 }
 
 export default function App() {
-  useGlobalUiTapSound();
   const { user, isGuest, loading, signOut } = useAuth();
   const [, setPathRev] = useState(0);
 
@@ -299,7 +272,6 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
   const { user, isGuest } = useAuth();
   const [page, setPageInternal] = useState<Page>('pool');
   const setPage = useCallback((next: Page | ((prev: Page) => Page)) => {
-    playAppSound('tabSwitch');
     setPageInternal(next);
   }, []);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -460,8 +432,6 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
     if (page !== 'tasks') setOpenCreateTaskNonce(0);
   }, [page]);
 
-  const [wideViewport, setWideViewport] = useState(false);
-  const [assistantDockOpen, setAssistantDockOpen] = useState(false);
   const [assistantAvailable, setAssistantAvailable] = useState<boolean | null>(null);
   const [ollamaSuggestedModel, setOllamaSuggestedModel] = useState('llama3.2');
   const [ollamaCloudLoopbackHint, setOllamaCloudLoopbackHint] = useState<string | undefined>(undefined);
@@ -501,14 +471,6 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
 
   const visibleTabs = tabs;
 
-  useEffect(() => {
-    const m = window.matchMedia('(min-width: 960px)');
-    const apply = () => setWideViewport(m.matches);
-    apply();
-    m.addEventListener('change', apply);
-    return () => m.removeEventListener('change', apply);
-  }, []);
-
   const refetchWorkspace = useCallback(() => {
     refetchNotes();
     refetchTasks();
@@ -540,19 +502,6 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
     onDataChanged: refetchWorkspace,
   });
 
-  const prevAssistantLoading = useRef(assistantChat.loading);
-  useEffect(() => {
-    const was = prevAssistantLoading.current;
-    prevAssistantLoading.current = assistantChat.loading;
-    if (was && !assistantChat.loading) {
-      const msgs = assistantChat.messages;
-      const last = msgs[msgs.length - 1];
-      if (last?.role === 'assistant') {
-        playAppSound('jarvisDone');
-      }
-    }
-  }, [assistantChat.loading, assistantChat.messages]);
-
   const assistantPanelProps = {
     jarvisMode,
     onJarvisModeChange: setJarvisModePersist,
@@ -572,8 +521,6 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
     guestMode: isGuest,
   };
 
-  const showAssistantDock = wideViewport && assistantDockOpen && page !== 'assistant';
-
   const tutorial = useTutorial(userId, setPage, setSettingsOpen, notes.length, tasks.length);
 
   const [narrowNav, setNarrowNav] = useState(
@@ -588,10 +535,6 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
     m.addEventListener('change', apply);
     return () => m.removeEventListener('change', apply);
   }, []);
-
-  useEffect(() => {
-    if (narrowNav) setAssistantDockOpen(false);
-  }, [narrowNav]);
 
   useEffect(() => {
     if (!mobileNavOpen) return;
@@ -618,9 +561,6 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
     completedCount,
     activeCount,
     dailyCount,
-    showAssistantDockToggle: wideViewport,
-    assistantDockOpen,
-    setAssistantDockOpen,
     settingsOpen,
     setSettingsOpen,
     settings,
@@ -880,7 +820,6 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
                 <div className="app-nav-drawer-scroll">
                   <AppNavSections
                     {...navSectionProps}
-                    showAssistantDockToggle={false}
                     onNavigate={() => setMobileNavOpen(false)}
                   />
                 </div>
@@ -983,9 +922,6 @@ function AuthenticatedApp({ signOut }: { signOut: () => Promise<void> }) {
           )}
         </div>
       </main>
-      {showAssistantDock && (
-        <AssistantDock {...assistantPanelProps} onClose={() => setAssistantDockOpen(false)} />
-      )}
       </div>
     </div>
     </AndroidPinProvider>

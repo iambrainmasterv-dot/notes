@@ -1441,7 +1441,7 @@ export const AGENT_TOOL_DEFINITIONS = [
     function: {
       name: 'get_app_capabilities',
       description:
-        'Return authoritative markdown for NoteTasks tabs, data model, deadlines, schedule templates, and mutation rules. Call when unsure about app behavior; not needed for purely general conversation.',
+        'Return the full NoteTasks product manual (tabs, UI, Chat vs Edit, tools, data model). Call for any question about **how the app works** or before giving step-by-step UI guidance. Prefer this over guessing.',
       parameters: { type: 'object', properties: {} },
     },
   },

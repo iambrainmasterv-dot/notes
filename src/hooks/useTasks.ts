@@ -4,7 +4,6 @@ import type { Task } from '../types';
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthProvider';
 import { storage } from '../storage';
-import { playAppSound } from '../audio/appSounds';
 
 function toApi(t: Task) {
   return {
@@ -93,7 +92,6 @@ export function useTasks() {
         progress: 0,
         createdAt: new Date().toISOString(),
       };
-      playAppSound('createAction');
       setTasks((prev) => [...prev, task]);
       api.createTask(toApi(task)).catch(() => {});
     },

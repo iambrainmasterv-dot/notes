@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ToastItem } from '../hooks/useNotifications';
-import { playAppSound } from '../audio/appSounds';
 
 const TOAST_EXIT_MS = 220;
 
@@ -56,18 +55,11 @@ export function Toasts({ toasts, onDismiss, durationMs = 6000 }: Props) {
 
   useEffect(() => {
     const seen = seenIds.current;
-    const newlyAdded: ToastItem[] = [];
     for (const t of toasts) {
-      if (!seen.has(t.id)) newlyAdded.push(t);
-    }
-    for (const t of newlyAdded) {
       seen.add(t.id);
     }
     for (const id of [...seen]) {
       if (!toasts.some((x) => x.id === id)) seen.delete(id);
-    }
-    for (const t of newlyAdded) {
-      playAppSound(t.sound ?? 'deadlineAlert');
     }
   }, [toasts]);
 

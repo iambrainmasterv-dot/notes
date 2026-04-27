@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { v4 as uuid } from 'uuid';
 import type { AppNotification } from '../types';
-import type { AppSoundId } from '../audio/appSounds';
 import {
   scanDeadlinePanelCandidates,
   staleCompletedPanelCandidate,
@@ -18,7 +17,6 @@ export interface ToastItem {
   title: string;
   message: string;
   level: AppNotification['level'];
-  sound?: AppSoundId;
 }
 
 export type { StaleCompletedInput };
@@ -68,7 +66,6 @@ export function useNotifications(
           title: n.title,
           message: n.message,
           level: n.level,
-          sound: 'deadlineAlert',
         },
       ]);
     }
@@ -97,7 +94,6 @@ export function useNotifications(
         title: n.title,
         message: n.message,
         level: n.level,
-        sound: 'completedTabReminder',
       },
     ]);
   }, [notes, tasks, now, staleCompleted]);
